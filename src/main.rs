@@ -63,17 +63,53 @@ fn parse_hex<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, 
     preceded(alt((tag("0X"), tag("0x"))), hex_digit1)(input)
 }
 
-fn parse_to_newline<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>, E> {
-    take_while(|c| !is_newline(c))(input)
-}
-
 fn parse_to_comment_sep<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>, E>{
     take_while(|c| !(c == b'|' || is_newline(c)))(input)
 }
 
-fn parse_comment<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, Vec<Span<'a>>, E> {
-    let (r, _) = tuple((tag(","), multispace0, tag("//")))(input)?;
-    separated_list0(tag("|"), parse_to_comment_sep)(r)
+fn parse_comment<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, (Option<String>, Option<f32>, Option<String>), E> {
+    let mut description: Option<String> = None;
+    let mut scale: Option<f32> = None;
+    let mut unit:Option<String> = None;
+
+    // Consume everything to an d including "//"
+    let (r, _) = tuple((take_until("//"), tag("//")))(input)?;
+    // Parse content between "|" until the end of the line to a Vec
+    let (r, vec) = separated_list0(tag("|"), parse_to_comment_sep)(r)?;
+
+    if vec.len() >= 1 {
+        // Consome all spaces, we might have an empty description but still some spaces.
+        let (r, _) = consume_spaces(vec[0])?;
+        if !r.fragment().is_empty() {
+            // The fragment is not empty. We have content. 
+            description = Some(bytes_to_string::<ErrorTree<Span>>(r));
+        }
+
+    }
+    if vec.len() >= 2 {
+        // Check if there is something to consume
+        let (mut r, _) = consume_spaces(vec[1])?;
+        if !r.fragment().is_empty() {
+            // If there is, we definitly have a unit, but do we have a scale as well?
+            let is_float_res = float::<Span<'a>, ErrorTree<Span>>(r);
+            if let Some((remains, scale_raw)) = is_float_res.ok() {
+                // We do! Extract the scale!
+                scale = Some(scale_raw);
+                // Set the remainder to what has not been parsed by "float"
+                r = remains;
+            }
+            // At this point, we may have a scale of not. If we have, the scale bytes have been consumed. 
+            // The remaining bytes may or may not be empty. If there is content, its the unit.
+            // Check, if we have a unit. Consume every space, then check if we have content left.
+            let (r, _) = consume_spaces(r)?;
+            if !r.fragment().is_empty() {
+                // r then contains the unit encoded in utf-8
+                unit = Some(bytes_to_string::<ErrorTree<Span>>(r).trim().to_string());
+            }
+        }
+    }
+    
+    Ok((r, (description, scale, unit)))
 }   
 
 fn bytes_to_string<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> String {
@@ -94,14 +130,19 @@ fn check_if_relevant<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Sp
     ))(input)
 }
 
+fn consume_spaces<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>, E> {
+    take_while(is_space)(input)    
+}
+
 fn parse_line<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, Option<CanId>, E> {
     let mut can_id = CanId::default();
-    // Skip any spaces at the start of the line
+    // Skip empty lines
     if line.len() == 0 {
         return Ok((line, None));
     }
 
-    let (r, _) = take_while(is_space)(line)?;
+    // Skip any number of spaces at the beginning of the line
+    let (r, _) = consume_spaces(line)?;
     // Check, if the line is irrelevant
     let is_unrelevant_line = check_if_relevant::<ErrorTree<Span>>(r).is_ok();
 
@@ -122,34 +163,17 @@ fn parse_line<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, 
 
     // Match the trailing comma after the ID, followed by any number of spaces. 
     // Split the comment into a list, separated by "|"s. 
-    let (mut r, comment_list) = parse_comment(r)?;
+    let (r, (description, scale, unit)) = parse_comment(r)?;
 
 
     can_id.str_id = bytes_to_string::<ErrorTree<Span>>(str_id_raw);
     can_id.hex_id = u32::from_str_radix(&bytes_to_string::<ErrorTree<Span>>(hex_id_raw), 16).unwrap();
-
-    let comment_list_len = comment_list.len();
-    if comment_list_len >= 1 {
-        can_id.description = Some(bytes_to_string::<ErrorTree<Span>>(comment_list[0]));
-    }
-
-    if comment_list_len >= 2 {
-        if comment_list[1].len() != 0 {
-            let is_full_comment = tuple((multispace0::<Span<'a>, ErrorTree<Span>>, float, multispace0, parse_to_comment_sep))(comment_list[1]);
-            if is_full_comment.is_err() {
-                let (ri, (_, unit_raw)) = tuple((multispace0, parse_to_newline))(comment_list[1])?;
-                can_id.unit = Some(bytes_to_string::<ErrorTree<Span>>(unit_raw));
-                r = ri;
-            }
-            else {
-                let (ri, (_, scale, _, unit_raw)) = is_full_comment.unwrap();
-                can_id.unit = Some(bytes_to_string::<ErrorTree<Span>>(unit_raw));
-                can_id.scale = Some(scale);
-                r = ri;
-            }
-        }
-    }
-
+    can_id.description = description;
+    can_id.scale = scale;
+    can_id.unit = unit;
+    
+    // Get rid of any trailing spaces
+    let (r, _) = consume_spaces(r)?;
     println!("{can_id:#?}");
     Ok((r, Some(can_id)))
 }
@@ -180,8 +204,9 @@ fn handle_error<'a>(src: &'static str, e: ErrorTree<Span<'a>>) {
 
 fn main() {
     let input_static = include_str!("SmartECLA_IDs.h");
+    // let input_static = "	CAN_ID_PERFORMANCE_COUNTER = 0x00000010, // Performance Messungen| 2.3\n    	CAN_ID_MODEL_PUMP_ALARM_CANNULA = 0x02B00001, //critical flow | 0.001 l/min \nCAN_ID_PGA_X_PUMP_STATUS = 0x1006000D, // Pump Status | | 100 100 1 1\n	CAN_ID_N560_X_BPM = 0x10070001, //pulse rate 	| per minute    \n";
     let ipt = Span::new(input_static.as_bytes());
-    let parse_res= final_parser(separated_list1(alt((line_ending, eof)), parse_line::<ErrorTree<Span>>))(ipt);
+    let parse_res= final_parser(separated_list1(line_ending, parse_line::<ErrorTree<Span>>))(ipt);
     
     let _can_ids = match parse_res {
         Ok(can_id_vec) => {
