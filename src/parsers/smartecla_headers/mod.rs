@@ -19,11 +19,11 @@ use super::common::handle_error;
 use super::common::Span;
 
 pub struct CanId {
-    hex_id: u32,
-    str_id: String,
-    description: Option<String>,
-    scale: Option<f32>,
-    unit: Option<String>,
+    pub hex_id: u32,
+    pub str_id: String,
+    pub description: Option<String>,
+    pub scale: Option<f32>,
+    pub unit: Option<String>,
 }
 
 impl Default for CanId {
@@ -46,7 +46,7 @@ impl PartialEq for CanId {
 
 impl Eq for CanId {}
 
-impl Debug for CanId {
+impl fmt::Display for CanId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let scale = match self.scale {
             Some(s) => s.to_string(),
@@ -130,7 +130,9 @@ fn check_if_relevant<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Sp
         tag("#"),
         tag("enum"),
         tag("}"),
+        tag("{"),
         tag("error"),
+        tag("typedef"),
         line_ending,
     ))(input)
 }
@@ -141,13 +143,14 @@ fn consume_spaces<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<
 
 fn parse_line<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, Option<CanId>, E> {
     let mut can_id = CanId::default();
-    // Skip empty lines
-    if line.len() == 0 {
+   
+    // Skip any number of spaces at the beginning of the line
+    let (r, _) = consume_spaces(line)?;
+     // Skip empty lines
+     if line.len() == 0 {
         return Ok((line, None));
     }
 
-    // Skip any number of spaces at the beginning of the line
-    let (r, _) = consume_spaces(line)?;
     // Check, if the line is irrelevant
     let is_unrelevant_line = check_if_relevant::<ErrorTree<Span>>(r).is_ok();
 
@@ -179,7 +182,6 @@ fn parse_line<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, 
     
     // Get rid of any trailing spaces
     let (r, _) = consume_spaces(r)?;
-    println!("{can_id:#?}");
     Ok((r, Some(can_id)))
 }
 
@@ -187,7 +189,6 @@ pub fn parse_canids<P: AsRef<Path>>(smartecla_file: &P) -> Vec<CanId> {
     let mut can_ids = Vec::<CanId>::new();
     match File::open(smartecla_file) {
         Ok(file) => {
-            println!("lo");
             let reader = BufReader::new(file);
             for line_result in reader.lines() {
                 match line_result {
