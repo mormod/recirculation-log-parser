@@ -46,6 +46,7 @@ impl PartialEq for CanId {
 
 impl Eq for CanId {}
 
+
 impl fmt::Display for CanId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let scale = match self.scale {
@@ -133,6 +134,9 @@ fn check_if_relevant<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Sp
         tag("{"),
         tag("error"),
         tag("typedef"),
+        tag("true"),
+        tag("false"),
+        tag("unsigned"),
         line_ending,
     ))(input)
 }
@@ -147,8 +151,8 @@ fn parse_line<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, 
     // Skip any number of spaces at the beginning of the line
     let (r, _) = consume_spaces(line)?;
      // Skip empty lines
-     if line.len() == 0 {
-        return Ok((line, None));
+     if r.len() == 0 {
+        return Ok((r, None));
     }
 
     // Check, if the line is irrelevant

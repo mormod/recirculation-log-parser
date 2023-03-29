@@ -6,7 +6,7 @@ use std::str::from_utf8;
 
 use super::common::{handle_error, Span, bytes_to_string};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct CanTs {
     pub hour: u32,
     pub min: u32,
@@ -20,17 +20,35 @@ impl fmt::Display for CanTs {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct CanMsg {
     pub hex_id: u32,
     pub value: f32,
     pub ts: CanTs
 }
 
+impl Eq for CanMsg {}
+
+impl Ord for CanMsg {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.hex_id.cmp(&other.hex_id)
+    }
+}
+
 impl fmt::Display for CanMsg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} @ {} = {}", self.hex_id, self.ts, self.value)
     }
+}
+
+impl Default for CanMsg {
+   fn default() -> Self {
+       Self {
+        hex_id: 0,
+        value: 0.0,
+        ts: CanTs { hour: 0, min: 0, sec: 0, tsec: 0 }
+       }
+   }
 }
 
 fn parse_spaces<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, Span<'a>, E> {
