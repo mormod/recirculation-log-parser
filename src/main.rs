@@ -1,12 +1,20 @@
-use std::path::{PathBuf};
+mod parsers;
 
-use parse_smartecla_header::{CanId, gather_canid_infos};
+use std::path::PathBuf;
 
-mod parse_smartecla_header;
+use parsers::{
+    parse_canids, CanId, 
+    parse_comments, TVComment
+};
 
 fn main() {
-    let can_ids:Vec<CanId> = gather_canid_infos(&PathBuf::from("src/SmartECLA_IDs.h"));
+    let can_ids: Vec<CanId> = parse_canids(&PathBuf::from("src/SmartECLA_IDs.h"));
     for can_id in can_ids {
         println!("{:?}", can_id);
     }
-}
+
+    let comments: Vec<TVComment> = parse_comments(&PathBuf::from("src/comments.txt"));
+    for comment in comments {
+        println!("{:#?}", comment);
+    }
+}   

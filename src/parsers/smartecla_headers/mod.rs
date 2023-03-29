@@ -11,25 +11,12 @@ use nom::{
 
 use core::str::from_utf8;
 use std::{path::Path, fs::File, io::{BufReader, BufRead}, fmt::{Debug, self}};
-use nom_locate::LocatedSpan;
-use miette::GraphicalReportHandler;
 use nom_supreme::{
-    error::{BaseErrorKind, ErrorTree, GenericErrorTree}, final_parser::final_parser,
+    error::{ErrorTree}, final_parser::final_parser,
 };
 
-type Span<'a> = LocatedSpan<&'a [u8]>;
-
-#[derive(thiserror::Error, Debug, miette::Diagnostic)]
-#[error("Bad Input")]
-struct BadInput {
-    #[source_code]
-    src: String,
-
-    #[label("{kind}")]
-    bad_bit: miette::SourceSpan,
-
-    kind: BaseErrorKind<&'static str, Box<dyn std::error::Error + Send + Sync>>,
-}
+use super::common::handle_error;
+use super::common::Span;
 
 pub struct CanId {
     hex_id: u32,
@@ -196,31 +183,7 @@ fn parse_line<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, 
     Ok((r, Some(can_id)))
 }
 
-fn handle_error<'a>(src: String, e: ErrorTree<Span<'a>>) {
-    match e {
-        GenericErrorTree::Base { location, kind } => {
-            let offset = location.location_offset().into();
-            let err = BadInput {
-                src,
-                bad_bit: miette::SourceSpan::new(offset, 0.into()),
-                kind,
-            };
-            let mut s = String::new();
-            GraphicalReportHandler::new()
-                .render_report(&mut s, &err)
-                .unwrap();
-            println!("{s}");
-        }
-        GenericErrorTree::Stack { .. } => todo!("stack"),
-        GenericErrorTree::Alt(s) => {
-            for i in s {
-                handle_error(src.clone(), i);
-            }
-        },
-    }
-}
-
-pub fn gather_canid_infos<P: AsRef<Path>>(smartecla_file: &P) -> Vec<CanId> {
+pub fn parse_canids<P: AsRef<Path>>(smartecla_file: &P) -> Vec<CanId> {
     let mut can_ids = Vec::<CanId>::new();
     match File::open(smartecla_file) {
         Ok(file) => {
@@ -250,25 +213,4 @@ pub fn gather_canid_infos<P: AsRef<Path>>(smartecla_file: &P) -> Vec<CanId> {
 
     can_ids
 }
-//     let input_static = include_str!(smartecla_file.into_os_string().to_string());
-//     let ipt = Span::new(input_static.as_bytes());
-//     let parse_res= final_parser(separated_list1(line_ending, parse_line::<ErrorTree<Span>>))(ipt);
-    
-//     let _can_ids = match parse_res {
-//         Ok(can_id_vec) => {
-//             let mut vec: Vec<CanId> = vec![];
-//             for entry in can_id_vec {
-//                 if let Some(can_id) = entry {
-//                     vec.push(can_id);
-//                 }
-//             }
-//             vec
-//         },
-//         Err(e) => {
-//             handle_error(&input_static, e);
-//         }
-//     };
 
-//     can_ids
-
-// }
