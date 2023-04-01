@@ -143,7 +143,7 @@ fn parse_line<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, 
     let (r, (description, scale, unit)) = parse_comment(r)?;
 
 
-    can_id.str_id = bytes_to_string::<ErrorTree<Span>>(str_id_raw);
+    can_id.str_id = Some(bytes_to_string::<ErrorTree<Span>>(str_id_raw));
     can_id.hex_id = u32::from_str_radix(&bytes_to_string::<ErrorTree<Span>>(hex_id_raw), 16).unwrap();
     can_id.description = description;
     can_id.scale = scale;

@@ -1,6 +1,8 @@
 use std::fmt;
+use hdf5::H5Type;
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(H5Type, Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[repr(C)]
 pub struct CanMsg {
     pub hex_id: u32,
     pub value: f32,
