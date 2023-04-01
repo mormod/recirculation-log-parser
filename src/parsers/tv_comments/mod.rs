@@ -3,41 +3,24 @@ use std::io::{BufReader, BufRead};
 use std::path::Path;
 
 use nom::IResult;
-use nom::bytes::complete::{take_while, tag};
+use nom::bytes::complete::{take_while, tag, is_a};
 use nom::character::complete::{multispace1, digit1};
 use nom::character::is_newline;
 use nom::error::ParseError;
-use nom::multi::separated_list1;
+use nom::multi::{separated_list1, many0};
 use nom::sequence::tuple;
 use nom_supreme::error::ErrorTree;
 use nom_supreme::final_parser::final_parser;
 
-use super::common::{handle_error, Span, bytes_to_string};
+use super::common::{handle_error, Span, bytes_to_string, to_timestamp};
 
-#[derive(Debug)]
-pub struct TVComment {
-    pub id: u32,
-    pub year: u32,
-    pub month: u32,
-    pub day: u32,
-    pub hour: u32,
-    pub min: u32,
-    pub sec: u32,
-    pub content: String,
-}
+pub mod tv_comment;
+pub use tv_comment::TVComment;
 
 fn parse_id<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, u32, E> {
     let (r, id_raw) = digit1(input)?;
     let id: u32 = bytes_to_string::<ErrorTree<Span>>(id_raw).parse().unwrap();
     return Ok((r, id));
-}
-
-fn parse_date<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, (u32, u32, u32), E> {
-    let (r, list) = separated_list1(tag("-"), digit1)(input)?;
-    let month: u32 = bytes_to_string::<ErrorTree<Span>>(list[0]).parse().unwrap();
-    let day: u32 = bytes_to_string::<ErrorTree<Span>>(list[1]).parse().unwrap();
-    let year: u32 = bytes_to_string::<ErrorTree<Span>>(list[2]).parse().unwrap();
-    Ok((r, (month, day, year)))
 }
 
 fn parse_time<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, (u32, u32, u32), E> {
@@ -59,11 +42,12 @@ fn parse_content<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'
 fn parse_line<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, Option<TVComment>, E> {
     let mut tvcomment = None;
     let mut rest = input;
-    let parse_res = tuple((parse_id::<ErrorTree<Span>>, multispace1, parse_date, multispace1, parse_time, multispace1, parse_content))(rest);
+    let parse_res = tuple((parse_id::<ErrorTree<Span>>, multispace1, many0(is_a("0123456789:.-")), multispace1, parse_time, multispace1, parse_content))(rest);
     if parse_res.is_ok() {
-        let (r, (id, _, (month, day, year), _, (hour, min, sec), _, content)) = parse_res.unwrap();
-        tvcomment = Some(TVComment{
-            id, year, month, day, hour, min, sec, content
+        let (r, (id, _, _, _, (hour, min, sec), _, content)) = parse_res.unwrap();
+        let ts = to_timestamp(hour, min, sec, 0);
+            tvcomment = Some(TVComment{
+            id, ts, content
         });
         rest = r;
     }
@@ -79,7 +63,6 @@ pub fn parse_comments<P: AsRef<Path>>(comment_file: &P) -> Vec<TVComment> {
     let mut can_ids = Vec::<TVComment>::new();
     match File::open(comment_file) {
         Ok(file) => {
-            println!("lo");
             let reader = BufReader::new(file);
             for line_result in reader.lines() {
                 match line_result {

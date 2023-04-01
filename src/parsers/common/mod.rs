@@ -23,6 +23,10 @@ pub fn bytes_to_string<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> String {
     from_utf8(input.as_ref()).unwrap().trim().to_string()
 }
 
+pub fn to_timestamp(hour: u32, min: u32, second: u32, millis: u32) -> u32 {
+    return millis + 1000 * second + 1000 * 60 * min + 1000 * 60 * 60 * hour;
+}
+
 pub fn handle_error<'a>(src: String, e: ErrorTree<Span<'a>>) {
     match e {
         GenericErrorTree::Base { location, kind } => {

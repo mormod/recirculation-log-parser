@@ -10,7 +10,7 @@ use nom::{
 };
 
 use core::str::from_utf8;
-use std::{path::Path, fs::File, io::{BufReader, BufRead}, fmt::{Debug, self}};
+use std::{path::Path, fs::File, io::{BufReader, BufRead}};
 use nom_supreme::{
     error::{ErrorTree}, final_parser::final_parser,
 };
@@ -18,44 +18,9 @@ use nom_supreme::{
 use super::common::handle_error;
 use super::common::Span;
 
-pub struct CanId {
-    pub hex_id: u32,
-    pub str_id: String,
-    pub description: Option<String>,
-    pub scale: Option<f32>,
-    pub unit: Option<String>,
-}
+pub mod can_id;
+pub use can_id::CanId;
 
-impl Default for CanId {
-    fn default() -> Self {
-        CanId {
-            hex_id: 0,
-            str_id: "".to_string(),
-            description: None,
-            scale: None,
-            unit: None
-        }
-    }
-}
-
-impl PartialEq for CanId {
-    fn eq(&self, other: &Self) -> bool {
-        self.hex_id == other.hex_id
-    }
-}
-
-impl Eq for CanId {}
-
-
-impl fmt::Display for CanId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let scale = match self.scale {
-            Some(s) => s.to_string(),
-            None => "None".to_string(),
-        };
-        write!(f, "{} = {} ({}) [{}, {}]", self.str_id, self.hex_id, self.description.clone().unwrap_or("None".to_string()), scale, self.unit.clone().unwrap_or("None".to_string()))
-    }
-}
 
 fn parse_equal<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, Span<'a>, E> {
     delimited(multispace1, tag("="), multispace1)(input)
@@ -156,9 +121,9 @@ fn parse_line<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, 
     }
 
     // Check, if the line is irrelevant
-    let is_unrelevant_line = check_if_relevant::<ErrorTree<Span>>(r).is_ok();
+    let is_irrelevant_line = check_if_relevant::<ErrorTree<Span>>(r).is_ok();
 
-    if is_unrelevant_line {
+    if is_irrelevant_line {
         let (r, _) = take_while(|c| !is_newline(c))(r)?;
         return Ok((r, None));
     }
@@ -213,7 +178,7 @@ pub fn parse_canids<P: AsRef<Path>>(smartecla_file: &P) -> Vec<CanId> {
                 }  
             }    
         }
-        Err(e) => println!("{e:#?}"),
+        Err(e) => eprintln!("{e:#?}"),
     };
 
     can_ids

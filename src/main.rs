@@ -4,8 +4,8 @@ use std::{path::PathBuf, time::SystemTime, collections::{HashMap, HashSet}};
 
 use parsers::{
     parse_canids, CanId, 
-    // parse_comments, TVComment, 
-    parse_messages, CanMsg, CanTs,
+    parse_comments, TVComment, 
+    parse_messages, CanMsg,
 };
 
 fn main() {
@@ -15,10 +15,10 @@ fn main() {
         can_ids_hash.insert(can_id.hex_id, can_id);
     }
 
-    // let comments: Vec<TVComment> = parse_comments(&PathBuf::from("src/comments.txt"));
-    // for comment in comments {
-    //     println!("{:#?}", comment);
-    // }
+    let comments: Vec<TVComment> = parse_comments(&PathBuf::from("src/cmt.txt"));
+    for comment in comments {
+        println!("{:#?}", comment);
+    }
 
     let start = SystemTime::now();
     let mut messages: Vec<CanMsg> = parse_messages(&PathBuf::from("src/log.txt"));
