@@ -20,33 +20,35 @@ pub use tv_comment::TVComment;
 #[allow(dead_code)]
 fn parse_id<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, u32, E> {
     let (r, id_raw) = digit1(input)?;
-    let id: u32 = bytes_to_string::<ErrorTree<Span>>(id_raw).parse().unwrap();
+    let id: u32 = bytes_to_string(id_raw).parse().unwrap();
     return Ok((r, id));
 }
 
 #[allow(dead_code)]
 fn parse_time<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, (u32, u32, u32), E> {
     let (r, list) = separated_list1(tag(":"), digit1)(input)?;
-    let hour: u32 = bytes_to_string::<ErrorTree<Span>>(list[0]).parse().unwrap();
-    let min: u32 = bytes_to_string::<ErrorTree<Span>>(list[1]).parse().unwrap();
-    let sec: u32 = bytes_to_string::<ErrorTree<Span>>(list[2]).parse().unwrap();
+    let hour: u32 = bytes_to_string(list[0]).parse().unwrap();
+    let min: u32 = bytes_to_string(list[1]).parse().unwrap();
+    let sec: u32 = bytes_to_string(list[2]).parse().unwrap();
     Ok((r, (hour, min, sec)))
 }
 
 #[allow(dead_code)]
 fn parse_content<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, String, E> {
     let (r, content_raw) = take_while(|c| !(is_newline(c)))(input)?;
-    let content = bytes_to_string::<ErrorTree<Span>>(content_raw);
+    let content = bytes_to_string(content_raw);
     Ok((r, content))
 }
 
-
+fn parse_comment<'a>(input: Span<'a>) -> IResult<Span<'a>, (u32, Span<'a>, Vec<Span<'a>>, Span<'a>, (u32, u32, u32), Span<'a>, String)> {
+    tuple((parse_id, multispace1, many0(is_a("0123456789:.-")), multispace1, parse_time, multispace1, parse_content))(input)
+}
 
 #[allow(dead_code)] // 012	10-23-2014 09:21:58	New Offset on ID CAN_ID_PRESSURE_SIG2(0x10030001): 85,09 mmHg
 fn parse_line<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, Option<TVComment>, E> {
     let mut tvcomment = None;
     let mut rest = input;
-    let parse_res = tuple((parse_id::<ErrorTree<Span>>, multispace1, many0(is_a("0123456789:.-")), multispace1, parse_time, multispace1, parse_content))(rest);
+    let parse_res = parse_comment(rest);
     if parse_res.is_ok() {
         let (r, (id, _, _, _, (hour, min, sec), _, content)) = parse_res.unwrap();
         let ts = to_timestamp(hour, min, sec, 0);
@@ -88,7 +90,7 @@ pub fn parse_comments<P: AsRef<Path>>(comment_file: &P) -> Vec<TVComment> {
                 }  
             }    
         }
-        Err(e) => println!("{e:#?}"),
+        Err(e) => log::error!("{e:#?}"),
     };
 
     can_ids

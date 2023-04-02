@@ -178,7 +178,7 @@ pub fn parse_canids<P: AsRef<Path>>(smartecla_file: &P) -> Vec<CanId> {
                 }  
             }    
         }
-        Err(e) => eprintln!("{e:#?}"),
+        Err(e) => log::error!("{e:#?}"),
     };
 
     can_ids

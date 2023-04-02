@@ -1,5 +1,4 @@
 use miette::GraphicalReportHandler;
-use nom::error::ParseError;
 use nom_locate::LocatedSpan;
 use nom_supreme::error::{BaseErrorKind, ErrorTree, GenericErrorTree};
 use std::str::from_utf8;
@@ -19,7 +18,7 @@ pub struct BadInput {
     pub kind: BaseErrorKind<&'static str, Box<dyn std::error::Error + Send + Sync>>,
 }
 
-pub fn bytes_to_string<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> String {
+pub fn bytes_to_string<'a>(input: Span<'a>) -> String {
     from_utf8(input.as_ref()).unwrap().trim().to_string()
 }
 
@@ -40,7 +39,7 @@ pub fn handle_error<'a>(src: String, e: ErrorTree<Span<'a>>) {
             GraphicalReportHandler::new()
                 .render_report(&mut s, &err)
                 .unwrap();
-            println!("{s}");
+            log::warn!("{s}");
         }
         GenericErrorTree::Stack { .. } => todo!("stack"),
         GenericErrorTree::Alt(s) => {

@@ -24,16 +24,18 @@ use super::common::{bytes_to_string, handle_error, to_timestamp, Span};
 pub mod can_msg;
 pub use can_msg::CanMsg;
 
-fn parse_spaces<'a, E: ParseError<Span<'a>>>(line: Span<'a>) -> IResult<Span<'a>, Span<'a>, E> {
+pub type FnCanMsgParser<'a> = fn(Span<'a>) -> IResult<Span<'a>, Option<CanMsg>, ErrorTree<Span<'a>>>;
+
+fn parse_spaces<'a>(line: Span<'a>) -> IResult<Span<'a>, Span<'a>, ErrorTree<Span<'a>>> {
     space1(line)
 }
 
 fn parse_ts<'a, E: ParseError<Span<'a>>>(raw_ts: Span<'a>) -> IResult<Span<'a>, u32, E> {
     let (r, list) = separated_list1(alt((tag(":"), tag("."))), digit1)(raw_ts)?;
-    let hour: u32 = bytes_to_string::<ErrorTree<Span>>(list[0]).parse().unwrap();
-    let min: u32 = bytes_to_string::<ErrorTree<Span>>(list[1]).parse().unwrap();
-    let sec: u32 = bytes_to_string::<ErrorTree<Span>>(list[2]).parse().unwrap();
-    let millis: u32 = bytes_to_string::<ErrorTree<Span>>(list[3]).parse().unwrap();
+    let hour: u32 = bytes_to_string(list[0]).parse().unwrap();
+    let min: u32 = bytes_to_string(list[1]).parse().unwrap();
+    let sec: u32 = bytes_to_string(list[2]).parse().unwrap();
+    let millis: u32 = bytes_to_string(list[3]).parse().unwrap();
     Ok((r, to_timestamp(hour, min, sec, millis)))
 }
 
@@ -46,7 +48,7 @@ fn parse_extended<'a, E: ParseError<Span<'a>>>(
 
     if line.len() > 0 {
         let parse_res = separated_list1(
-            parse_spaces::<ErrorTree<Span>>,
+            parse_spaces,
             take_while(|c| !is_space(c)),
         )(line);
         if parse_res.is_err() {
@@ -80,7 +82,7 @@ fn parse_simple<'a, E: ParseError<Span<'a>>>(
 
     if line.len() > 0 {
         let parse_res = separated_list1(
-            parse_spaces::<ErrorTree<Span>>,
+            parse_spaces,
             take_while(|c| !is_space(c)),
         )(line);
         if parse_res.is_err() {
@@ -108,7 +110,8 @@ fn parse_simple<'a, E: ParseError<Span<'a>>>(
     Ok((Span::new("".as_bytes()), can_msg))
 }
 
-pub fn parse_messages<P: AsRef<Path>>(log_file: &P) -> Vec<CanMsg> {
+pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Vec<CanMsg> {
+    
     let mut can_msgs = Vec::<CanMsg>::new();
     match File::open(log_file) {
         Ok(file) => {
@@ -116,7 +119,13 @@ pub fn parse_messages<P: AsRef<Path>>(log_file: &P) -> Vec<CanMsg> {
             for line_result in reader.lines() {
                 match line_result {
                     Ok(line) => {
-                        let parse = final_parser(parse_simple::<ErrorTree<Span>>)(Span::new(
+                        let parser: FnCanMsgParser = if is_extended {
+                            parse_extended
+                        }
+                        else {
+                            parse_simple
+                        };
+                        let parse = final_parser(parser)(Span::new(
                             line.as_bytes(),
                         ));
                         match parse {

@@ -1,6 +1,5 @@
 
 use std::{path::{PathBuf, Path}, time::SystemTime, collections::{HashMap, HashSet}, ops::Deref};
-
 use clap::Parser;
 
 mod parsers;
@@ -12,7 +11,7 @@ use parsers::{
 #[derive(Debug)]
 struct CanMsgCollection {
     can_id: CanId,
-    collection: Vec<CanMsg>
+    collection: Vec<CanMsg>,
 }
 
 impl CanMsgCollection {
@@ -25,11 +24,20 @@ impl CanMsgCollection {
 }
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about)]
 struct CanHdfCli {
+    /// Path to SmartECLA_IDs.h (or similar)
     can_ids_path: PathBuf,
-    can_log_path: PathBuf,
-    output_path: PathBuf
+    
+    /// Path to the CAN log file
+    can_log_paths: Vec<PathBuf>,
+    
+    /// Path, where the resulting HDF file should be written to
+    output_path: PathBuf,
+
+    /// Indicate extended CAN logs (with hex data representations)
+    #[arg(short)]
+    extended_log: bool
 }
 
 fn create_str_attr<T>(location: &T, name: &str, value: &str) -> hdf5::Result<()>
@@ -49,8 +57,7 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
         let str_id = match &collection.can_id.str_id {
             Some(str_id) => str_id.to_owned(),
             None => collection.can_id.hex_id.to_string()
-        };
-        
+        }; 
         let subgroup = root.create_group(str_id.as_str())?;
         
         subgroup.new_attr::<u32>().create("hex_id")?.write_scalar(&collection.can_id.hex_id)?;
@@ -76,6 +83,8 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
         let dataset = subgroup.new_dataset_builder();
         let dataset = dataset.with_data(&collection.collection);
         dataset.create(format!("{:#?}", str_id).as_str())?;
+        log::debug!("Written subgroup {}", str_id);
+
     }
 
     Ok(())
@@ -102,10 +111,10 @@ fn check_can_ids(can_msgs: &Vec<CanMsg>, can_ids: &HashMap<u32, CanId>) {
         };
     }
 
-    println!("Not mappable:");
     for nm in not_mappable_ids {
-        println!("\t{}", nm);
+        log::warn!("Not mappable: {}", nm);
     }
+    
 }
 
 fn create_collection(can_msgs: &Vec<CanMsg>, can_ids: &HashMap<u32, CanId>) -> Vec<CanMsgCollection> {
@@ -132,29 +141,31 @@ fn create_collection(can_msgs: &Vec<CanMsg>, can_ids: &HashMap<u32, CanId>) -> V
     split_by_id
 }
 
-fn acquire_and_combine<P: AsRef<Path>>(can_ids_path: &P, can_log_path: &P) -> Vec<CanMsgCollection>{
+fn main() {
+    pretty_env_logger::init();
 
     let start = SystemTime::now();
     
-    let can_ids = acquire_can_ids(can_ids_path);
-    let mut can_msgs: Vec<CanMsg> = parse_messages(can_log_path);
+    let cli_input = CanHdfCli::parse();
 
+    log::info!("Collecting CAN IDs from {:#?}", cli_input.can_ids_path.as_os_str());
+    let can_ids = acquire_can_ids(&cli_input.can_ids_path);
+
+    let mut can_msgs: Vec<CanMsg> = Vec::new();
+    for log_path in cli_input.can_log_paths {
+        log::info!("Collecting CAN log from {:#?}", log_path.as_os_str());
+        can_msgs.append(&mut parse_messages(&log_path, cli_input.extended_log));
+    }
+    
     check_can_ids(&can_msgs, &can_ids);
-
     can_msgs.sort();
+
+    log::debug!("Writing to {:#?}...", cli_input.output_path.as_os_str());
     let collection = create_collection(&can_msgs, &can_ids);
+    let _ = write_to_hdf5(&cli_input.output_path, &collection);
 
     let end = SystemTime::now();
-    println!("Took {} ms", end.duration_since(start).unwrap().as_millis());
+    log::debug!("Took {} ms", end.duration_since(start).unwrap().as_millis());
 
-    collection
-}
-
-fn main() {
-    let cli_input = CanHdfCli::parse();
-    println!("Collecting CAN IDs from {:#?}", cli_input.can_ids_path.as_os_str());
-    println!("Collecting CAN log from {:#?}", cli_input.can_log_path.as_os_str());
-    let collection = acquire_and_combine(&cli_input.can_ids_path, &cli_input.can_log_path);
-    println!("Writing to {:#?}", cli_input.output_path.as_os_str());
-    let _ = write_to_hdf5(&cli_input.output_path, &collection);
+    log::info!("{}", humansize::format_size(std::fs::metadata(cli_input.output_path).unwrap().len(), humansize::DECIMAL));
 }   
