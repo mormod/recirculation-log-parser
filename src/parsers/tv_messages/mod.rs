@@ -38,6 +38,7 @@ fn parse_ts<'a, E: ParseError<Span<'a>>>(raw_ts: Span<'a>) -> IResult<Span<'a>, 
 }
 
 //100C0000h	8	2E 00 00 00 01 00 00 00 	0,44921875 L/min	1	 average Blood Flow 		08:44:04.97
+#[allow(dead_code)]
 fn parse_extended<'a, E: ParseError<Span<'a>>>(
     line: Span<'a>,
 ) -> IResult<Span<'a>, Option<CanMsg>, E> {
@@ -52,7 +53,7 @@ fn parse_extended<'a, E: ParseError<Span<'a>>>(
             unreachable!("This should never happen.");
         }
 
-        let (r, list) = parse_res.unwrap();
+        let (_, list) = parse_res.unwrap();
 
         // CanId is always the first item. If its not, this is not a valid line
         let (_, hex_id_raw) = take_while(is_hex_digit)(list[0])?;

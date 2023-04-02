@@ -17,12 +17,14 @@ use super::common::{handle_error, Span, bytes_to_string, to_timestamp};
 pub mod tv_comment;
 pub use tv_comment::TVComment;
 
+#[allow(dead_code)]
 fn parse_id<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, u32, E> {
     let (r, id_raw) = digit1(input)?;
     let id: u32 = bytes_to_string::<ErrorTree<Span>>(id_raw).parse().unwrap();
     return Ok((r, id));
 }
 
+#[allow(dead_code)]
 fn parse_time<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, (u32, u32, u32), E> {
     let (r, list) = separated_list1(tag(":"), digit1)(input)?;
     let hour: u32 = bytes_to_string::<ErrorTree<Span>>(list[0]).parse().unwrap();
@@ -31,6 +33,7 @@ fn parse_time<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>,
     Ok((r, (hour, min, sec)))
 }
 
+#[allow(dead_code)]
 fn parse_content<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, String, E> {
     let (r, content_raw) = take_while(|c| !(is_newline(c)))(input)?;
     let content = bytes_to_string::<ErrorTree<Span>>(content_raw);
@@ -38,7 +41,8 @@ fn parse_content<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'
 }
 
 
-// 012	10-23-2014 09:21:58	New Offset on ID CAN_ID_PRESSURE_SIG2(0x10030001): 85,09 mmHg
+
+#[allow(dead_code)] // 012	10-23-2014 09:21:58	New Offset on ID CAN_ID_PRESSURE_SIG2(0x10030001): 85,09 mmHg
 fn parse_line<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, Option<TVComment>, E> {
     let mut tvcomment = None;
     let mut rest = input;
@@ -59,6 +63,7 @@ fn parse_line<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>,
     Ok((rest, tvcomment))
 }
 
+#[allow(dead_code)]
 pub fn parse_comments<P: AsRef<Path>>(comment_file: &P) -> Vec<TVComment> {
     let mut can_ids = Vec::<TVComment>::new();
     match File::open(comment_file) {
