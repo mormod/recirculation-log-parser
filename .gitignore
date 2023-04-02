@@ -1,1 +1,6 @@
 /target
+*.h5
+*.hdf5
+*.txt
+*.h
+
