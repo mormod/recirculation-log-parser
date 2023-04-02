@@ -60,7 +60,9 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
         }; 
         let subgroup = root.create_group(str_id.as_str())?;
         
-        subgroup.new_attr::<u32>().create("hex_id")?.write_scalar(&collection.can_id.hex_id)?;
+        subgroup.new_attr::<u32>()
+            .create("hex_id")?
+            .write_scalar(&collection.can_id.hex_id)?;
         
         let desc = match &collection.can_id.description {
             Some(desc) => desc.as_str(),
@@ -78,7 +80,9 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
             Some(scale) => scale,
             None => &1.0
         };
-        subgroup.new_attr::<f32>().create("scale")?.write_scalar(scale)?;
+        subgroup.new_attr::<f32>()
+            .create("scale")?
+            .write_scalar(scale)?;
 
         let dataset = subgroup.new_dataset_builder();
         let dataset = dataset.with_data(&collection.collection);
@@ -165,7 +169,16 @@ fn main() {
     let _ = write_to_hdf5(&cli_input.output_path, &collection);
 
     let end = SystemTime::now();
-    log::debug!("Took {} ms", end.duration_since(start).unwrap().as_millis());
+    log::debug!("Took {} ms", 
+        end.duration_since(start)
+            .unwrap()
+            .as_millis()
+    );
+    log::debug!("Identified {} CAN IDs.", can_ids.len());
+    log::debug!("Wrote {} datasets.", collection.len());
 
-    log::info!("{}", humansize::format_size(std::fs::metadata(cli_input.output_path).unwrap().len(), humansize::DECIMAL));
+    log::info!("{}", humansize::format_size(
+        std::fs::metadata(cli_input.output_path).unwrap().len(), 
+        humansize::DECIMAL)
+    );
 }   

@@ -2,7 +2,7 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
     character::{
-        complete::{digit1, space1},
+        complete::{digit1, space1, space0},
         is_hex_digit, is_space,
     },
     error::ParseError,
@@ -35,12 +35,17 @@ fn parse_ts<'a, E: ParseError<Span<'a>>>(raw_ts: Span<'a>) -> IResult<Span<'a>, 
     let hour: u32 = bytes_to_string(list[0]).parse().unwrap();
     let min: u32 = bytes_to_string(list[1]).parse().unwrap();
     let sec: u32 = bytes_to_string(list[2]).parse().unwrap();
-    let millis: u32 = bytes_to_string(list[3]).parse().unwrap();
+
+    let millis = if list.len() > 3 {
+        bytes_to_string(list[3]).parse::<u32>().unwrap()
+    } else {
+        0
+    };
+
     Ok((r, to_timestamp(hour, min, sec, millis)))
 }
 
 //100C0000h	8	2E 00 00 00 01 00 00 00 	0,44921875 L/min	1	 average Blood Flow 		08:44:04.97
-#[allow(dead_code)]
 fn parse_extended<'a, E: ParseError<Span<'a>>>(
     line: Span<'a>,
 ) -> IResult<Span<'a>, Option<CanMsg>, E> {
@@ -55,17 +60,25 @@ fn parse_extended<'a, E: ParseError<Span<'a>>>(
             unreachable!("This should never happen.");
         }
 
-        let (_, list) = parse_res.unwrap();
+        let (_, mut list) = parse_res.unwrap();
+
+        for i in 0..(list.len()-1) {
+            if bytes_to_string(*list.get(i).unwrap()) == String::from("") {
+                list.remove(i);
+            }
+        }
 
         // CanId is always the first item. If its not, this is not a valid line
         let (_, hex_id_raw) = take_while(is_hex_digit)(list[0])?;
 
-        let hex_id_res = u32::from_str_radix(from_utf8(hex_id_raw.as_ref()).unwrap().trim(), 16);
+        let hex_id_res = u32::from_str_radix(bytes_to_string(hex_id_raw).as_str(), 16);
+
         if hex_id_res.is_err() {
             return Ok((Span::new("".as_bytes()), can_msg));
         }
         let hex_id = hex_id_res.unwrap();
         let (_, value) = float(list[10])?;
+
         let (_, ts) = parse_ts(list[list.len() - 1])?;
 
         can_msg = Some(CanMsg { hex_id, value, ts });
@@ -85,6 +98,7 @@ fn parse_simple<'a, E: ParseError<Span<'a>>>(
             parse_spaces,
             take_while(|c| !is_space(c)),
         )(line);
+
         if parse_res.is_err() {
             unreachable!("This should never happen.");
         }
@@ -111,7 +125,10 @@ fn parse_simple<'a, E: ParseError<Span<'a>>>(
 }
 
 pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Vec<CanMsg> {
-    
+    if is_extended {
+        log::debug!("Using extended parser!");
+    }
+
     let mut can_msgs = Vec::<CanMsg>::new();
     match File::open(log_file) {
         Ok(file) => {
@@ -139,7 +156,7 @@ pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Ve
                             }
                         }
                     }
-                    Err(_) => {}
+                    Err(_) => {log::error!("Invalid line");}
                 }
             }
         }
