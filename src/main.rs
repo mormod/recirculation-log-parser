@@ -1,6 +1,8 @@
 
 use std::{path::{PathBuf, Path}, time::SystemTime, collections::{HashMap, HashSet}, ops::Deref};
 use clap::Parser;
+use hdf5::{Location};
+use hdf5::types::VarLenUnicode;
 
 mod parsers;
 use parsers::{
@@ -40,27 +42,29 @@ struct CanHdfCli {
     extended_log: bool
 }
 
-fn create_str_attr<T>(location: &T, name: &str, value: &str) -> hdf5::Result<()>
-where
-    T: Deref<Target = hdf5::Location>,
+fn create_str_attr(location: &Location, name: &str, value: &str) -> hdf5::Result<()>
 {
-    let attr = location.new_attr::<hdf5::types::VarLenUnicode>().create(name)?;
-    let value_: hdf5::types::VarLenUnicode = value.parse().unwrap();
+    let attr = location.new_attr::<VarLenUnicode>().create(name)?;
+    let value_: VarLenUnicode = value.parse().unwrap();
     attr.write_scalar(&value_)
 }
 
 fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollection>) -> hdf5::Result<()> {
     let root = hdf5::File::create(output_path)?;
-    create_str_attr::<hdf5::Group>(&root, "created", chrono::Local::now().to_rfc3339().as_str())?;
+    create_str_attr(&root, "created", chrono::Local::now().to_rfc3339().as_str())?;
 
     for collection in collections {
         let str_id = match &collection.can_id.str_id {
             Some(str_id) => str_id.to_owned(),
             None => collection.can_id.hex_id.to_string()
         }; 
-        let subgroup = root.create_group(str_id.as_str())?;
-        
-        subgroup.new_attr::<u32>()
+
+        let dataset = root.new_dataset_builder();
+        let dataset = dataset.with_data(&collection.collection);
+        let dataset = dataset.set_filters(&[hdf5::filters::Filter::Deflate(5)]);
+        let dataset = dataset.create(format!("{:#?}", str_id).as_str())?;
+
+        dataset.new_attr::<u32>()
             .create("hex_id")?
             .write_scalar(&collection.can_id.hex_id)?;
         
@@ -68,25 +72,24 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
             Some(desc) => desc.as_str(),
             None => "None"
         };
-        create_str_attr::<hdf5::Group>(&subgroup, "description", desc)?;
+        create_str_attr(&dataset, "description", desc)?;
 
         let unit = match &collection.can_id.unit {
             Some(unit) => unit.as_str(),
             None => "None"
         };
-        create_str_attr::<hdf5::Group>(&subgroup, "unit", unit)?;
+        create_str_attr(&dataset, "unit", unit)?;
 
         let scale = match &collection.can_id.scale {
             Some(scale) => scale,
             None => &1.0
         };
-        subgroup.new_attr::<f32>()
+        dataset.new_attr::<f32>()
             .create("scale")?
             .write_scalar(scale)?;
 
-        let dataset = subgroup.new_dataset_builder();
-        let dataset = dataset.with_data(&collection.collection);
-        dataset.create(format!("{:#?}", str_id).as_str())?;
+        
+        log::trace!("HDF5 Filters: {:?}", dataset.filters());
         log::debug!("Written subgroup {}", str_id);
 
     }

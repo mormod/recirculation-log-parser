@@ -2,7 +2,7 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
     character::{
-        complete::{digit1, space1, space0},
+        complete::{digit1, space1},
         is_hex_digit, is_space,
     },
     error::ParseError,
