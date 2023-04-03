@@ -156,7 +156,7 @@ pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Ve
                             }
                         }
                     }
-                    Err(_) => {log::error!("Invalid line");}
+                    Err(e) => {log::error!("Invalid line: {:?}", e);}
                 }
             }
         }

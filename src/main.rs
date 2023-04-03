@@ -1,5 +1,5 @@
 
-use std::{path::{PathBuf, Path}, time::SystemTime, collections::{HashMap, HashSet}, ops::Deref};
+use std::{path::{PathBuf, Path}, time::SystemTime, collections::{HashMap, HashSet}};
 use clap::Parser;
 use hdf5::{Location};
 use hdf5::types::VarLenUnicode;
