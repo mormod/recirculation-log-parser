@@ -4,3 +4,6 @@
 *.txt
 *.h
 
+*.venv/
+*.vscode/
+
