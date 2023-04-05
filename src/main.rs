@@ -26,20 +26,28 @@ impl CanMsgCollection {
 }
 
 #[derive(Parser)]
-#[command(author, version, about)]
+#[command(author, version)]
+#[command(about = "Uses a SmartECLA_IDs.h file (or similar) to parse a legacy CAN log to HDF5.
+In the HDF5 file, every CAN ID is stored as a dataset in the 'root' group.
+Every dataset has four attributes: hex_id (u32), unit (String), scale (f32) and description (String).
+Every entry in every dataset is stored along with the time it was acquired.")]
 struct CanHdfCli {
-    /// Path to SmartECLA_IDs.h (or similar)
-    can_ids_path: PathBuf,
-    
-    /// Path to the CAN log file
-    can_log_paths: Vec<PathBuf>,
-    
     /// Path, where the resulting HDF file should be written to
     output_path: PathBuf,
 
+    /// Path to SmartECLA_IDs.h (or similar)
+    can_ids_path: PathBuf,
+    
+    /// Path to all CAN log files of the experiment. 
+    can_log_paths: Vec<PathBuf>,
+
     /// Indicate extended CAN logs (with hex data representations)
     #[arg(short)]
-    extended_log: bool
+    extended_log: bool,
+
+    /// Also parse comments file
+    #[arg(short)]
+    comments_path: Option<PathBuf>
 }
 
 fn create_str_attr(location: &Location, name: &str, value: &str) -> hdf5::Result<()>
