@@ -135,35 +135,37 @@ pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Ve
     }
     let mut lnr = 1;
     let mut can_msgs = Vec::<CanMsg>::new();
+    let mut line_buf = vec![];
     match File::open(log_file) {
         Ok(file) => {
-            let reader = BufReader::new(file);
-            for line_result in reader.lines() {
-                match line_result {
-                    Ok(line) => {
-                        let parser: FnCanMsgParser = if is_extended {
-                            parse_extended
-                        }
-                        else {
-                            parse_simple
-                        };
-                        let parse = final_parser(parser)(Span::new(
-                            line.as_bytes(),
-                        ));
-                        match parse {
-                            Ok(possible_can_msg) => {
-                                if let Some(can_msg) = possible_can_msg {
-                                    can_msgs.push(can_msg);
-                                }
-                            }
-                            Err(e) => {
-                                handle_error(line.to_owned(), e);
-                            }
+            let mut reader = BufReader::new(file);
+            while let Ok(_) = reader.read_until(b'\n', &mut line_buf) {
+                if line_buf.is_empty() {
+                    break;
+                }
+                let parser: FnCanMsgParser = if is_extended {
+                    parse_extended
+                }
+                else {
+                    parse_simple
+                };
+                let parse = final_parser(parser)(Span::new(&line_buf[..]));
+                match parse {
+                    Ok(possible_can_msg) => {
+                        if let Some(can_msg) = possible_can_msg {
+                            can_msgs.push(can_msg);
                         }
                     }
-                    Err(e) => {log::error!("Invalid line ({}): {:?}", lnr, e);}
-                };
-                lnr += 1;
+                    Err(e) => {
+                        handle_error(String::from_utf8_lossy(&line_buf).to_string(), e);
+                    }
+                }
+                line_buf.clear();
+
+                if lnr % 500000 == 0 {
+                    log::info!("Still at it...")
+                }
+                lnr += 1
             }
         }
         Err(e) => println!("{e:#?}"),

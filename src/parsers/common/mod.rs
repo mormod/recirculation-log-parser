@@ -19,7 +19,7 @@ pub struct BadInput {
 }
 
 pub fn bytes_to_string<'a>(input: Span<'a>) -> String {
-    from_utf8(input.as_ref()).unwrap().trim().to_string()
+    String::from_utf8_lossy(input.as_ref()).trim().to_string()
 }
 
 pub fn to_timestamp(hour: u32, min: u32, second: u32, millis: u32) -> u32 {

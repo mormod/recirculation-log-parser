@@ -185,7 +185,7 @@ fn main() {
     let _ = write_to_hdf5(&cli_input.output_path, &collection);
 
     let end = SystemTime::now();
-    log::debug!("Took {} ms", 
+    log::info!("Took {} ms", 
         end.duration_since(start)
             .unwrap()
             .as_millis()
