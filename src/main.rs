@@ -9,6 +9,7 @@ use parsers::{
     parse_canids, CanId, 
     parse_messages, CanMsg, TVComment,
 };
+use pretty_env_logger::env_logger::{Builder, Env};
 
 #[derive(Debug)]
 struct CanMsgCollection {
@@ -34,12 +35,14 @@ Every entry in every dataset is stored along with the time it was acquired.")]
 struct CanHdfCli {
     /// Path, where the resulting HDF file should be written to
     output_path: PathBuf,
-
+    
     /// Path to SmartECLA_IDs.h (or similar)
     can_ids_path: PathBuf,
     
     /// Path to all CAN log files of the experiment. 
+    #[arg(required = true)]
     can_log_paths: Vec<PathBuf>,
+    
 
     /// Indicate extended CAN logs (with hex data representations)
     #[arg(short)]
@@ -157,18 +160,20 @@ fn create_collection(can_msgs: &Vec<CanMsg>, can_ids: &HashMap<u32, CanId>) -> V
 }
 
 fn main() {
-    pretty_env_logger::init();
+    Builder::from_env(Env::default().default_filter_or("info"))
+        .format_timestamp(None)
+        .init();
 
     let start = SystemTime::now();
-    
+
     let cli_input = CanHdfCli::parse();
 
-    log::info!("Collecting CAN IDs from {:#?}", cli_input.can_ids_path.as_os_str());
+    log::debug!("Collecting CAN IDs from {:#?}", cli_input.can_ids_path.as_os_str());
     let can_ids = acquire_can_ids(&cli_input.can_ids_path);
 
     let mut can_msgs: Vec<CanMsg> = Vec::new();
     for log_path in cli_input.can_log_paths {
-        log::info!("Collecting CAN log from {:#?}", log_path.as_os_str());
+        log::debug!("Collecting CAN log from {:#?}", log_path.as_os_str());
         can_msgs.append(&mut parse_messages(&log_path, cli_input.extended_log));
     }
     
@@ -186,9 +191,14 @@ fn main() {
             .as_millis()
     );
     log::debug!("Identified {} CAN IDs.", can_ids.len());
-    log::debug!("Wrote {} datasets.", collection.len());
 
-    log::info!("{}", humansize::format_size(
+    if collection.len() == 0 {
+        log::error!("Wrote 0 datasets! Maybe try using the parser for extended log files (-e)");
+    } else {
+        log::info!("Wrote {} datasets.", collection.len());
+    }
+
+    log::info!("{:?} <- {}", cli_input.output_path.to_owned().as_os_str(), humansize::format_size(
         std::fs::metadata(cli_input.output_path).unwrap().len(), 
         humansize::DECIMAL)
     );
