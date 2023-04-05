@@ -7,7 +7,7 @@ use hdf5::types::VarLenUnicode;
 mod parsers;
 use parsers::{
     parse_canids, CanId, 
-    parse_messages, CanMsg,
+    parse_messages, CanMsg, TVComment,
 };
 
 #[derive(Debug)]

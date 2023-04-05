@@ -8,7 +8,7 @@ use nom::{
     error::ParseError,
     multi::separated_list1,
     number::complete::float,
-    sequence::tuple,
+    sequence::{tuple, preceded},
     IResult,
 };
 use nom_supreme::{error::ErrorTree, final_parser::final_parser};
@@ -62,6 +62,11 @@ fn parse_extended<'a, E: ParseError<Span<'a>>>(
 
         let (_, mut list) = parse_res.unwrap();
 
+        if list.len() <= 10 {
+            // This is not a "real" CAN log message. It might be a comment. Just ignore those
+            return Ok((Span::new("".as_bytes()), can_msg));
+        } 
+
         for i in 0..(list.len()-1) {
             if bytes_to_string(*list.get(i).unwrap()) == String::from("") {
                 list.remove(i);
@@ -69,7 +74,7 @@ fn parse_extended<'a, E: ParseError<Span<'a>>>(
         }
 
         // CanId is always the first item. If its not, this is not a valid line
-        let (_, hex_id_raw) = take_while(is_hex_digit)(list[0])?;
+        let (_, hex_id_raw) = preceded(alt((tag("0x"), tag(""))), take_while(is_hex_digit))(list[0])?;
 
         let hex_id_res = u32::from_str_radix(bytes_to_string(hex_id_raw).as_str(), 16);
 
@@ -128,7 +133,7 @@ pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Ve
     if is_extended {
         log::debug!("Using extended parser!");
     }
-
+    let mut lnr = 1;
     let mut can_msgs = Vec::<CanMsg>::new();
     match File::open(log_file) {
         Ok(file) => {
@@ -156,8 +161,9 @@ pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Ve
                             }
                         }
                     }
-                    Err(e) => {log::error!("Invalid line: {:?}", e);}
-                }
+                    Err(e) => {log::error!("Invalid line ({}): {:?}", lnr, e);}
+                };
+                lnr += 1;
             }
         }
         Err(e) => println!("{e:#?}"),
