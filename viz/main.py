@@ -29,7 +29,7 @@ def get_data_for(logfile, canids) -> List[Timeseries]:
         str_id = key
         timeseries_val = item["ts", "value"]
         unit = item.attrs["unit"] if item.attrs["unit"] != "None" else "1"
-        scale = item.attrs["scale"] if item.attrs["scale"] != "None" else 1.0
+        scale = item.attrs["scale"]
         return Timeseries(timeseries_val, str_id, unit, scale)
 
     with hdf.File(logfile, "r") as hdf_file:
@@ -56,13 +56,15 @@ def get_data_for(logfile, canids) -> List[Timeseries]:
 def plot_all(timeseries: List[Timeseries]):
     ylabel = ""
     plt.figure(frameon=True)
+    plt.tight_layout()
+    plt.ylabel(ylabel)
+
     for ts in timeseries:
         # Data may be unsorted due to compression
         ts.timeseries.sort()
         plt.plot(ts.timeseries["ts"], ts.scale * ts.timeseries["value"], label=ts.str_id.strip('"'))
-        ylabel += ts.unit if ylabel == "" else "/" + ts.unit
+        ylabel += ts.unit if ylabel == "" else ", " + ts.unit
 
-    plt.ylabel(ylabel)
     plt.legend()
     plt.show()
 
