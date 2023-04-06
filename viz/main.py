@@ -58,8 +58,16 @@ def get_data_for(logfile, canids) -> List[Timeseries]:
                 
 
 def get_comments_for(logfile, comments):
+    if comments is None:
+        return
+    
     with hdf.File(logfile, "r") as hdf_file:
         cmt_timeseries = []
+        
+        if not comments:
+            # When no comment indices are given, plot all comments
+            comments = hdf_file["COMMENTS"]["id"]
+        
         for cmt_id in comments:
             cmt_id_index = int(cmt_id) - 1 # CAN log comments are indexed with 1
             cmt_timeseries.append([hdf_file["COMMENTS"][cmt_id_index][1], hdf_file["COMMENTS"][cmt_id_index][2].decode("UTF-8")])
@@ -79,8 +87,8 @@ def plot_all(timeseries: List[Timeseries], comment):
         tms.timeseries.sort()
 
         ts = tms.timeseries["ts"]
-        value = tms.timeseries["value"]
-        plt.plot(ts, tms.scale * value, label=tms.str_id)
+        value = tms.timeseries["value"] # * tms.scale
+        plt.plot(ts, value, label=tms.str_id)
         
         prov_min = min(value)
         prov_max = max(value)
@@ -91,13 +99,14 @@ def plot_all(timeseries: List[Timeseries], comment):
 
         ylabel += tms.unit if ylabel == "" else ", " + tms.unit
     
-    max_value *= 0.95
+
     for cmt in comments:
         x_pos = cmt[0]
-        plt.vlines(x_pos, min_value, max_value, linestyles="dotted", color="red")
-        plt.text(x_pos, max_value + 5, cmt[1], horizontalalignment='center')
+        plt.vlines(x_pos, min_value, max_value * 1.02, linestyles="dotted", color="red")
+        plt.text(x_pos, max_value * 1.025, cmt[1], horizontalalignment='center')
 
     plt.ylabel(ylabel)
+    plt.ylim((min_value, max_value * 1.05))
     plt.legend()
     plt.show()
 
@@ -111,8 +120,10 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--plot-comments", nargs="*", help="Plot comments as vertical lines. If no ID(s) specified, show all. Use space as a separator.")
     args = parser.parse_args()
 
+    do_plot_comments = args.plot_comments is not None
+
     timeseries = get_data_for(args.logfile, args.can_ids)
-    comments = get_comments_for(args.logfile, args.plot_comments) if args.plot_comments else []
+    comments = get_comments_for(args.logfile, args.plot_comments) if do_plot_comments else []
 
     plot_all(timeseries, comments)
     
