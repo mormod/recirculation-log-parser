@@ -70,10 +70,11 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
             None => collection.can_id.hex_id.to_string()
         }; 
 
-        let dataset = root.new_dataset_builder();
-        let dataset = dataset.with_data(&collection.collection);
-        let dataset = dataset.set_filters(&[hdf5::filters::Filter::Deflate(5)]);
-        let dataset = dataset.create(format!("{:#?}", str_id).as_str())?;
+        let dataset = 
+            root.new_dataset_builder()
+                .with_data(&collection.collection)
+                .set_filters(&[hdf5::filters::Filter::Deflate(5)])
+                .create(str_id.as_str())?;
 
         dataset.new_attr::<u32>()
             .create("hex_id")?

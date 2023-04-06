@@ -38,7 +38,7 @@ def get_data_for(logfile, canids) -> List[Timeseries]:
         # Map all hex ids to their string ids, as the string ids are the keys in the HDF5 file
         hex_to_str_id = { int(hdf_file.get(f'{key}').attrs["hex_id"]):key for key in str_ids }
         for canid in canids:
-            key = f'"{canid}"'
+            key = canid
             if key in str_ids:
                 timeseries.append(to_timeseries(key, hdf_file))
                 continue
