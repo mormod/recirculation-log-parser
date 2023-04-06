@@ -197,7 +197,7 @@ fn main() {
     check_can_ids(&can_msgs, &can_ids);
     can_msgs.sort();
 
-    log::debug!("Writing to {:#?}...", cli_input.output_path.as_os_str());
+    log::info!("Writing to {:#?}...", cli_input.output_path.as_os_str());
     let collection = create_collection(&can_msgs, &can_ids);
     let _ = write_to_hdf5(&cli_input.output_path, &collection, &can_cmts);
 
