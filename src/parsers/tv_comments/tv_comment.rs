@@ -5,5 +5,5 @@ use hdf5::{H5Type, types::VarLenUnicode};
 pub struct CanCmt {
     pub id: u32,
     pub ts: u32,
-    pub content: VarLenUnicode,
+    pub value: VarLenUnicode,
 }

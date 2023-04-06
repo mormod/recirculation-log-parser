@@ -51,7 +51,7 @@ fn parse_line<'a>(input: Span<'a>) -> IResult<Span<'a>, Option<CanCmt>, ErrorTre
             tvcomment = Some(CanCmt{
                 id, 
                 ts, 
-                content: content.parse().unwrap()
+                value: content.parse().unwrap()
         });
     }
 
