@@ -1,10 +1,12 @@
 import argparse
 import os
+import sys
 import h5py as hdf
 import logging
 from pathlib import Path
 from typing import List
 import matplotlib.pyplot as plt
+import numpy as np
 
 class Timeseries:
     def __init__(self, timeseries, str_id, unit, scale):
@@ -13,7 +15,8 @@ class Timeseries:
         self.unit = unit
         self.scale = scale
 
-def os_file(path) -> bool:
+
+def is_hdf5_file(path) -> bool:
     is_file = os.path.isfile(path)
     # Get suffix and ditch the "."
     is_hdf5 = Path(path).suffix.lower()[1:] in ["hdf5", "h5"]
@@ -34,18 +37,19 @@ def get_data_for(logfile, canids) -> List[Timeseries]:
 
     with hdf.File(logfile, "r") as hdf_file:
         timeseries = []
-        str_ids = hdf_file.keys()
+        str_ids = list(hdf_file["CAN_IDs"].keys())
+
         # Map all hex ids to their string ids, as the string ids are the keys in the HDF5 file
-        hex_to_str_id = { int(hdf_file.get(f'{key}').attrs["hex_id"]):key for key in str_ids }
+        hex_to_str_id = { int(hdf_file["CAN_IDs"].get(key).attrs["hex_id"]):key for key in str_ids }
         for canid in canids:
             key = canid
             if key in str_ids:
-                timeseries.append(to_timeseries(key, hdf_file))
+                timeseries.append(to_timeseries(key, hdf_file["CAN_IDs"]))
                 continue
             
             key = int(canid)
             if key in hex_to_str_id:
-                timeseries.append(to_timeseries(hex_to_str_id[key], hdf_file))
+                timeseries.append(to_timeseries(hex_to_str_id[key], hdf_file["CAN_IDs"]))
                 continue
 
             logging.warning(f"Could not find {canid} in log file!")
@@ -53,18 +57,47 @@ def get_data_for(logfile, canids) -> List[Timeseries]:
         return timeseries
                 
 
-def plot_all(timeseries: List[Timeseries]):
+def get_comments_for(logfile, comments):
+    with hdf.File(logfile, "r") as hdf_file:
+        cmt_timeseries = []
+        for cmt_id in comments:
+            cmt_id_index = int(cmt_id) - 1 # CAN log comments are indexed with 1
+            cmt_timeseries.append([hdf_file["COMMENTS"][cmt_id_index][1], hdf_file["COMMENTS"][cmt_id_index][2].decode("UTF-8")])
+
+    return cmt_timeseries
+
+
+def plot_all(timeseries: List[Timeseries], comment):
     ylabel = ""
-    plt.figure(frameon=True)
+    plt.figure(frameon=True )
     plt.tight_layout()
-    plt.ylabel(ylabel)
 
-    for ts in timeseries:
+    min_value = sys.maxsize
+    max_value = -sys.maxsize
+    for tms in timeseries:
         # Data may be unsorted due to compression
-        ts.timeseries.sort()
-        plt.plot(ts.timeseries["ts"], ts.scale * ts.timeseries["value"], label=ts.str_id.strip('"'))
-        ylabel += ts.unit if ylabel == "" else ", " + ts.unit
+        tms.timeseries.sort()
 
+        ts = tms.timeseries["ts"]
+        value = tms.timeseries["value"]
+        plt.plot(ts, tms.scale * value, label=tms.str_id)
+        
+        prov_min = min(value)
+        prov_max = max(value)
+        if prov_min < min_value:
+            min_value = prov_min
+        if prov_max > max_value:
+            max_value = prov_max
+
+        ylabel += tms.unit if ylabel == "" else ", " + tms.unit
+    
+    max_value *= 0.95
+    for cmt in comments:
+        x_pos = cmt[0]
+        plt.vlines(x_pos, min_value, max_value, linestyles="dotted", color="red")
+        plt.text(x_pos, max_value + 5, cmt[1], horizontalalignment='center')
+
+    plt.ylabel(ylabel)
     plt.legend()
     plt.show()
 
@@ -73,12 +106,14 @@ if __name__ == "__main__":
     logging.basicConfig(format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(description="Plot CAN data from HDF5 files")
-    parser.add_argument("logfile", help="Path to HDF5 log", type=os_file)
+    parser.add_argument("logfile", help="Path to HDF5 log", type=is_hdf5_file)
     parser.add_argument("can_ids", nargs="+", help="CAN IDs to use for plotting")
+    parser.add_argument("-c", "--plot-comments", nargs="*", help="Plot comments as vertical lines. If no ID(s) specified, show all. Use space as a separator.")
     args = parser.parse_args()
 
     timeseries = get_data_for(args.logfile, args.can_ids)
+    comments = get_comments_for(args.logfile, args.plot_comments) if args.plot_comments else []
 
-    plot_all(timeseries)
+    plot_all(timeseries, comments)
     
 
