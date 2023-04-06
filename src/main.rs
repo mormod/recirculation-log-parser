@@ -1,13 +1,14 @@
 
 use std::{path::{PathBuf, Path}, time::SystemTime, collections::{HashMap, HashSet}};
 use clap::Parser;
-use hdf5::{Location};
+use hdf5::Location;
 use hdf5::types::VarLenUnicode;
 
 mod parsers;
 use parsers::{
     parse_canids, CanId, 
-    parse_messages, CanMsg, TVComment,
+    parse_messages, CanMsg, 
+    parse_comments, TVComment,
 };
 use pretty_env_logger::env_logger::{Builder, Env};
 
@@ -60,7 +61,7 @@ fn create_str_attr(location: &Location, name: &str, value: &str) -> hdf5::Result
     attr.write_scalar(&value_)
 }
 
-fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollection>) -> hdf5::Result<()> {
+fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollection>, can_cmts: &Vec<TVComment>) -> hdf5::Result<()> {
     let root = hdf5::File::create(output_path)?;
     create_str_attr(&root, "created", chrono::Local::now().to_rfc3339().as_str())?;
 
@@ -102,9 +103,15 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
 
         
         log::trace!("HDF5 Filters: {:?}", dataset.filters());
-        log::debug!("Written subgroup {}", str_id);
+        log::debug!("Written dataset {}", str_id);
 
     }
+    
+    root.new_dataset_builder()
+        .with_data(&can_cmts)
+        .set_filters(&[hdf5::filters::Filter::Deflate(5)])
+        .create("COMMENTS")?;
+    log::debug!("Wrote comments to COMMENTS");
 
     Ok(())
 }
@@ -173,9 +180,15 @@ fn main() {
     let can_ids = acquire_can_ids(&cli_input.can_ids_path);
 
     let mut can_msgs: Vec<CanMsg> = Vec::new();
-    for log_path in cli_input.can_log_paths {
-        log::debug!("Collecting CAN log from {:#?}", log_path.as_os_str());
+    for (i, log_path) in cli_input.can_log_paths.iter().enumerate() {
+        log::info!("Parsing log file {:#?} ({}/{})...", log_path.as_os_str(), i + 1, cli_input.can_log_paths.len());
         can_msgs.append(&mut parse_messages(&log_path, cli_input.extended_log));
+    }
+
+    let mut can_cmts: Vec<TVComment> = Vec::new();
+    if let Some(comments_path) = cli_input.comments_path {
+        log::info!("Parsing comments...");
+        can_cmts.append(&mut parse_comments(&comments_path));
     }
     
     check_can_ids(&can_msgs, &can_ids);
@@ -183,7 +196,7 @@ fn main() {
 
     log::debug!("Writing to {:#?}...", cli_input.output_path.as_os_str());
     let collection = create_collection(&can_msgs, &can_ids);
-    let _ = write_to_hdf5(&cli_input.output_path, &collection);
+    let _ = write_to_hdf5(&cli_input.output_path, &collection, &can_cmts);
 
     let end = SystemTime::now();
     log::info!("Took {} ms", 

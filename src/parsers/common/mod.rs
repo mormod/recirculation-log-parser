@@ -1,8 +1,6 @@
 use miette::GraphicalReportHandler;
 use nom_locate::LocatedSpan;
 use nom_supreme::error::{BaseErrorKind, ErrorTree, GenericErrorTree};
-use std::str::from_utf8;
-
 
 pub type Span<'a> = LocatedSpan<&'a [u8]>;
 
