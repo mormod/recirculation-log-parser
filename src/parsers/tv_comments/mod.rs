@@ -15,7 +15,7 @@ use nom_supreme::final_parser::final_parser;
 use super::common::{handle_error, Span, bytes_to_string, to_timestamp};
 
 pub mod tv_comment;
-pub use tv_comment::TVComment;
+pub use tv_comment::CanCmt;
 
 fn parse_id<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, u32, E> {
     let (r, id_raw) = digit1(input)?;
@@ -42,13 +42,13 @@ fn parse_comment<'a>(input: Span<'a>) -> IResult<Span<'a>, (u32, Span<'a>, Vec<S
 }
 
 #[allow(dead_code)] // 012	10-23-2014 09:21:58	New Offset on ID CAN_ID_PRESSURE_SIG2(0x10030001): 85,09 mmHg
-fn parse_line<'a>(input: Span<'a>) -> IResult<Span<'a>, Option<TVComment>, ErrorTree<Span<'a>>> {
+fn parse_line<'a>(input: Span<'a>) -> IResult<Span<'a>, Option<CanCmt>, ErrorTree<Span<'a>>> {
     let mut tvcomment = None;
     let parse_res = parse_comment(input);
     if parse_res.is_ok() {
         let (_, (id, _, _, _, (hour, min, sec), _, content)) = parse_res.unwrap();
         let ts = to_timestamp(hour, min, sec, 0);
-            tvcomment = Some(TVComment{
+            tvcomment = Some(CanCmt{
                 id, 
                 ts, 
                 content: content.parse().unwrap()
@@ -59,8 +59,8 @@ fn parse_line<'a>(input: Span<'a>) -> IResult<Span<'a>, Option<TVComment>, Error
 }
 
 #[allow(dead_code)]
-pub fn parse_comments<P: AsRef<Path>>(comment_file: &P) -> Vec<TVComment> {
-    let mut cmts = Vec::<TVComment>::new();
+pub fn parse_comments<P: AsRef<Path>>(comment_file: &P) -> Vec<CanCmt> {
+    let mut cmts = Vec::<CanCmt>::new();
     match File::open(comment_file) {
         Ok(file) => {
             let mut line_buf = vec![];

@@ -8,7 +8,7 @@ mod parsers;
 use parsers::{
     parse_canids, CanId, 
     parse_messages, CanMsg, 
-    parse_comments, TVComment,
+    parse_comments, CanCmt,
 };
 use pretty_env_logger::env_logger::{Builder, Env};
 
@@ -61,7 +61,7 @@ fn create_str_attr(location: &Location, name: &str, value: &str) -> hdf5::Result
     attr.write_scalar(&value_)
 }
 
-fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollection>, can_cmts: &Vec<TVComment>) -> hdf5::Result<()> {
+fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollection>, can_cmts: &Vec<CanCmt>) -> hdf5::Result<()> {
     let root = hdf5::File::create(output_path)?;
     create_str_attr(&root, "created", chrono::Local::now().to_rfc3339().as_str())?;
 
@@ -185,7 +185,7 @@ fn main() {
         can_msgs.append(&mut parse_messages(&log_path, cli_input.extended_log));
     }
 
-    let mut can_cmts: Vec<TVComment> = Vec::new();
+    let mut can_cmts: Vec<CanCmt> = Vec::new();
     if let Some(comments_path) = cli_input.comments_path {
         log::info!("Parsing comments...");
         can_cmts.append(&mut parse_comments(&comments_path));
