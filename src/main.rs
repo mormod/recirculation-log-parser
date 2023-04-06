@@ -65,6 +65,8 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
     let root = hdf5::File::create(output_path)?;
     create_str_attr(&root, "created", chrono::Local::now().to_rfc3339().as_str())?;
 
+    let ds_group = root.create_group("CAN_IDs")?;
+
     for collection in collections {
         let str_id = match &collection.can_id.str_id {
             Some(str_id) => str_id.to_owned(),
@@ -72,7 +74,7 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
         }; 
 
         let dataset = 
-            root.new_dataset_builder()
+            ds_group.new_dataset_builder()
                 .with_data(&collection.collection)
                 .set_filters(&[hdf5::filters::Filter::Deflate(5)])
                 .create(str_id.as_str())?;
@@ -111,6 +113,7 @@ fn write_to_hdf5<P: AsRef<Path>>(output_path: &P, collections: &Vec<CanMsgCollec
         .with_data(&can_cmts)
         .set_filters(&[hdf5::filters::Filter::Deflate(5)])
         .create("COMMENTS")?;
+    
     log::debug!("Wrote comments to COMMENTS");
 
     Ok(())
@@ -169,8 +172,8 @@ fn create_collection(can_msgs: &Vec<CanMsg>, can_ids: &HashMap<u32, CanId>) -> V
 
 fn main() {
     Builder::from_env(Env::default().default_filter_or("info"))
-        .format_timestamp(None)
-        .init();
+            .format_timestamp(None)
+            .init();
 
     let start = SystemTime::now();
 
