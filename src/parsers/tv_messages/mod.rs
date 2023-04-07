@@ -110,6 +110,11 @@ fn parse_simple<'a, E: ParseError<Span<'a>>>(
 
         let (_, list) = parse_res.unwrap();
 
+        if list.len() <= 2 {
+            // This is an incomplete log entry
+            return Ok((Span::new("".as_bytes()), None));
+        }
+
         // CanId is always the first item. If its not, this is not a valid line
         let hex_id_res =
             tuple((tag::<_, _, ErrorTree<Span>>("0x"), take_while(is_hex_digit)))(list[0]);
