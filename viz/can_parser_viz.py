@@ -111,7 +111,7 @@ def plot_all(timeseries: List[Timeseries], comment):
     plt.show()
 
         
-if __name__ == "__main__":
+def main():
     logging.basicConfig(format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(description="Plot CAN data from HDF5 files")
@@ -128,3 +128,5 @@ if __name__ == "__main__":
     plot_all(timeseries, comments)
     
 
+if __name__ == "__main__":
+    main()
