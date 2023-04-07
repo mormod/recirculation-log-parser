@@ -19,9 +19,18 @@ pub struct BadInput {
 pub fn bytes_to_string<'a>(input: Span<'a>) -> String {
     String::from_utf8_lossy(input.as_ref()).trim().to_string()
 }
-
 pub fn to_timestamp(hour: u32, min: u32, second: u32, millis: u32) -> u32 {
-    return millis + 1000 * second + 1000 * 60 * min + 1000 * 60 * 60 * hour;
+    static mut HIGHEST_HOUR: u32 = 0;
+    let mut modifier = 0;
+    unsafe {
+        modifier = if hour < HIGHEST_HOUR {
+            24
+        } else {
+            HIGHEST_HOUR = hour;
+            0
+        };
+    }
+    return millis + 1000 * second + 1000 * 60 * min + 1000 * 60 * 60 * (hour + modifier);
 }
 
 pub fn handle_error<'a>(src: String, e: ErrorTree<Span<'a>>) {
