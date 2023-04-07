@@ -143,7 +143,6 @@ fn check_can_ids(can_msgs: &Vec<CanMsg>, can_ids: &HashMap<u32, CanId>) {
     for nm in not_mappable_ids {
         log::warn!("Not mappable: {}", nm);
     }
-    
 }
 
 fn create_collection(can_msgs: &Vec<CanMsg>, can_ids: &HashMap<u32, CanId>) -> Vec<CanMsgCollection> {
@@ -179,18 +178,20 @@ fn main() {
 
     let cli_input = CanHdfCli::parse();
 
-    log::debug!("Collecting CAN IDs from {:#?}", cli_input.can_ids_path.as_os_str());
+    log::info!("Collecting CAN IDs from {:#?}", cli_input.can_ids_path.as_os_str());
     let can_ids = acquire_can_ids(&cli_input.can_ids_path);
 
+    let mut total_size_b = 0;
     let mut can_msgs: Vec<CanMsg> = Vec::new();
     for (i, log_path) in cli_input.can_log_paths.iter().enumerate() {
         log::info!("Parsing log file {:#?} ({}/{})...", log_path.as_os_str(), i + 1, cli_input.can_log_paths.len());
         can_msgs.append(&mut parse_messages(&log_path, cli_input.extended_log));
+        total_size_b += std::fs::metadata(&log_path).unwrap().len();
     }
 
     let mut can_cmts: Vec<CanCmt> = Vec::new();
     if let Some(comments_path) = cli_input.comments_path {
-        log::info!("Parsing comments...");
+        log::info!("Parsing comments from {:#?}...", comments_path.as_os_str());
         can_cmts.append(&mut parse_comments(&comments_path));
     }
     
@@ -215,8 +216,13 @@ fn main() {
         log::info!("Wrote {} datasets.", collection.len());
     }
 
-    log::info!("{:?} <- {}", cli_input.output_path.to_owned().as_os_str(), humansize::format_size(
-        std::fs::metadata(cli_input.output_path).unwrap().len(), 
-        humansize::DECIMAL)
+    let new_size_b = std::fs::metadata(&cli_input.output_path).unwrap().len();
+    log::info!("{:?}: {} ({} B from {} B)", cli_input.output_path.as_os_str(), 
+        humansize::format_size(
+            new_size_b, 
+            humansize::DECIMAL
+        ),
+        new_size_b,
+        total_size_b
     );
 }   
