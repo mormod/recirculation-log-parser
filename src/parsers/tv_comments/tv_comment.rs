@@ -1,4 +1,4 @@
-use hdf5::{H5Type, types::VarLenUnicode};
+use hdf5::{types::VarLenUnicode, H5Type};
 
 #[derive(Debug, H5Type)]
 #[repr(C)]

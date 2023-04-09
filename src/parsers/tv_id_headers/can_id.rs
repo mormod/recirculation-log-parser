@@ -24,7 +24,7 @@ impl Default for CanId {
             str_id: None,
             description: None,
             scale: None,
-            unit: None
+            unit: None,
         }
     }
 }
@@ -37,18 +37,19 @@ impl PartialEq for CanId {
 
 impl Eq for CanId {}
 
-
 impl fmt::Display for CanId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let scale = match self.scale {
             Some(s) => s.to_string(),
             None => "None".to_string(),
         };
-        write!(f, "{} = {} ({}) [{}, {}]", 
+        write!(
+            f,
+            "{} = {} ({}) [{}, {}]",
             self.str_id.clone().unwrap_or("None".to_string()),
-            self.hex_id, 
-            self.description.clone().unwrap_or("None".to_string()), 
-            scale, 
+            self.hex_id,
+            self.description.clone().unwrap_or("None".to_string()),
+            scale,
             self.unit.clone().unwrap_or("None".to_string())
         )
     }

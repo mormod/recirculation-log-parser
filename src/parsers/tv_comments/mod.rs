@@ -1,18 +1,19 @@
 use std::fs::File;
-use std::io::{BufReader, BufRead};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::process::exit;
 
-use nom::IResult;
-use nom::bytes::complete::{take_while, tag, is_a};
-use nom::character::complete::{multispace1, digit1};
+use nom::bytes::complete::{is_a, tag, take_while};
+use nom::character::complete::{digit1, multispace1};
 use nom::character::is_newline;
 use nom::error::ParseError;
-use nom::multi::{separated_list1, many0};
+use nom::multi::{many0, separated_list1};
 use nom::sequence::tuple;
+use nom::IResult;
 use nom_supreme::error::ErrorTree;
 use nom_supreme::final_parser::final_parser;
 
-use super::common::{handle_error, Span, bytes_to_string, to_timestamp};
+use super::common::{bytes_to_string, handle_error, to_timestamp, Span};
 
 pub mod tv_comment;
 pub use tv_comment::CanCmt;
@@ -23,7 +24,9 @@ fn parse_id<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, u
     return Ok((r, id));
 }
 
-fn parse_time<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, (u32, u32, u32), E> {
+fn parse_time<'a, E: ParseError<Span<'a>>>(
+    input: Span<'a>,
+) -> IResult<Span<'a>, (u32, u32, u32), E> {
     let (r, list) = separated_list1(tag(":"), digit1)(input)?;
     let hour: u32 = bytes_to_string(list[0]).parse().unwrap();
     let min: u32 = bytes_to_string(list[1]).parse().unwrap();
@@ -37,8 +40,29 @@ fn parse_content<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'
     Ok((r, content))
 }
 
-fn parse_comment<'a>(input: Span<'a>) -> IResult<Span<'a>, (u32, Span<'a>, Vec<Span<'a>>, Span<'a>, (u32, u32, u32), Span<'a>, String)> {
-    tuple((parse_id, multispace1, many0(is_a("0123456789:.-")), multispace1, parse_time, multispace1, parse_content))(input)
+fn parse_comment<'a>(
+    input: Span<'a>,
+) -> IResult<
+    Span<'a>,
+    (
+        u32,
+        Span<'a>,
+        Vec<Span<'a>>,
+        Span<'a>,
+        (u32, u32, u32),
+        Span<'a>,
+        String,
+    ),
+> {
+    tuple((
+        parse_id,
+        multispace1,
+        many0(is_a("0123456789:.-")),
+        multispace1,
+        parse_time,
+        multispace1,
+        parse_content,
+    ))(input)
 }
 
 #[allow(dead_code)] // 012	10-23-2014 09:21:58	New Offset on ID CAN_ID_PRESSURE_SIG2(0x10030001): 85,09 mmHg
@@ -48,10 +72,10 @@ fn parse_line<'a>(input: Span<'a>) -> IResult<Span<'a>, Option<CanCmt>, ErrorTre
     if parse_res.is_ok() {
         let (_, (id, _, _, _, (hour, min, sec), _, content)) = parse_res.unwrap();
         let ts = to_timestamp(hour, min, sec, 0);
-            tvcomment = Some(CanCmt{
-                id, 
-                ts, 
-                value: content.parse().unwrap()
+        tvcomment = Some(CanCmt {
+            id,
+            ts,
+            value: content.parse().unwrap(),
         });
     }
 
@@ -64,7 +88,7 @@ pub fn parse_comments<P: AsRef<Path>>(comment_file: &P) -> Vec<CanCmt> {
     match File::open(comment_file) {
         Ok(file) => {
             let mut line_buf = vec![];
-            let mut reader = BufReader::new(file);  
+            let mut reader = BufReader::new(file);
             while let Ok(_) = reader.read_until(b'\n', &mut line_buf) {
                 if line_buf.is_empty() {
                     break;
@@ -83,7 +107,10 @@ pub fn parse_comments<P: AsRef<Path>>(comment_file: &P) -> Vec<CanCmt> {
                 line_buf.clear();
             }
         }
-        Err(e) => log::error!("{e:#?}"),
+        Err(e) => {
+            log::error!("{e:#?}");
+            exit(1);
+        }
     };
 
     log::debug!("Parsed {} comments.", cmts.len());

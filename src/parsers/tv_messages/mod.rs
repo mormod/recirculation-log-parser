@@ -8,7 +8,7 @@ use nom::{
     error::ParseError,
     multi::separated_list1,
     number::complete::float,
-    sequence::{tuple, preceded},
+    sequence::{preceded, tuple},
     IResult,
 };
 use nom_supreme::{error::ErrorTree, final_parser::final_parser};
@@ -24,7 +24,8 @@ use super::common::{bytes_to_string, handle_error, to_timestamp, Span};
 pub mod can_msg;
 pub use can_msg::CanMsg;
 
-pub type FnCanMsgParser<'a> = fn(Span<'a>) -> IResult<Span<'a>, Option<CanMsg>, ErrorTree<Span<'a>>>;
+pub type FnCanMsgParser<'a> =
+    fn(Span<'a>) -> IResult<Span<'a>, Option<CanMsg>, ErrorTree<Span<'a>>>;
 
 fn parse_spaces<'a>(line: Span<'a>) -> IResult<Span<'a>, Span<'a>, ErrorTree<Span<'a>>> {
     space1(line)
@@ -52,10 +53,7 @@ fn parse_extended<'a, E: ParseError<Span<'a>>>(
     let mut can_msg: Option<CanMsg> = None;
 
     if line.len() > 0 {
-        let parse_res = separated_list1(
-            parse_spaces,
-            take_while(|c| !is_space(c)),
-        )(line);
+        let parse_res = separated_list1(parse_spaces, take_while(|c| !is_space(c)))(line);
         if parse_res.is_err() {
             unreachable!("This should never happen.");
         }
@@ -65,16 +63,17 @@ fn parse_extended<'a, E: ParseError<Span<'a>>>(
         if list.len() <= 10 {
             // This is not a "real" CAN log message. It might be a comment. Just ignore those
             return Ok((Span::new("".as_bytes()), can_msg));
-        } 
+        }
 
-        for i in 0..(list.len()-1) {
+        for i in 0..(list.len() - 1) {
             if bytes_to_string(*list.get(i).unwrap()) == String::from("") {
                 list.remove(i);
             }
         }
 
         // CanId is always the first item. If its not, this is not a valid line
-        let (_, hex_id_raw) = preceded(alt((tag("0x"), tag(""))), take_while(is_hex_digit))(list[0])?;
+        let (_, hex_id_raw) =
+            preceded(alt((tag("0x"), tag(""))), take_while(is_hex_digit))(list[0])?;
 
         let hex_id_res = u32::from_str_radix(bytes_to_string(hex_id_raw).as_str(), 16);
 
@@ -99,10 +98,7 @@ fn parse_simple<'a, E: ParseError<Span<'a>>>(
     let mut can_msg: Option<CanMsg> = None;
 
     if line.len() > 0 {
-        let parse_res = separated_list1(
-            parse_spaces,
-            take_while(|c| !is_space(c)),
-        )(line);
+        let parse_res = separated_list1(parse_spaces, take_while(|c| !is_space(c)))(line);
 
         if parse_res.is_err() {
             unreachable!("This should never happen.");
@@ -150,8 +146,7 @@ pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Ve
                 }
                 let parser: FnCanMsgParser = if is_extended {
                     parse_extended
-                }
-                else {
+                } else {
                     parse_simple
                 };
                 let parse = final_parser(parser)(Span::new(&line_buf[..]));
