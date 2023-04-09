@@ -21,15 +21,15 @@ pub fn bytes_to_string<'a>(input: Span<'a>) -> String {
 }
 pub fn to_timestamp(hour: u32, min: u32, second: u32, millis: u32) -> u32 {
     static mut HIGHEST_HOUR: u32 = 0;
-    let mut modifier = 0;
-    unsafe {
-        modifier = if hour < HIGHEST_HOUR {
-            24
-        } else {
-            HIGHEST_HOUR = hour;
-            0
+    let modifier = 
+        unsafe {
+            if hour < HIGHEST_HOUR {
+                24
+            } else {
+                HIGHEST_HOUR = hour;
+                0
+            }
         };
-    }
     return millis + 1000 * second + 1000 * 60 * min + 1000 * 60 * 60 * (hour + modifier);
 }
 
