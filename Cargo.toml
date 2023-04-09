@@ -3,9 +3,6 @@ name = "can-parser"
 version = "0.1.0"
 edition = "2021"
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 chrono = "0.4.24"
 clap = { version = "4.2.1", features = ["derive"] }
@@ -18,3 +15,8 @@ nom-supreme = "0.8"
 nom_locate = "4"
 pretty_env_logger = "0.4.0"
 thiserror = "1.0.39"
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
