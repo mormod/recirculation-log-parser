@@ -132,16 +132,37 @@ fn acquire_can_ids<P: AsRef<Path>>(path: &P) -> HashMap<u32, CanId> {
     all_can_ids
 }
 
-fn check_can_ids(can_msgs: &Vec<CanMsg>, can_ids: &HashMap<u32, CanId>) {
+fn check_can_ids(can_msgs: &Vec<CanMsg>, can_ids: &mut HashMap<u32, CanId>) {
     let mut not_mappable_ids: HashSet<u32> = HashSet::new();
 
     for msg in can_msgs.iter() {
-        match can_ids.get(&msg.hex_id) {
-            Some(_) => {}
-            None => {
+        if let None = can_ids.get(&msg.hex_id) {
+            // We still might be able to match: IDs can have device information
+            if let Some(id) = can_ids.get(&(msg.hex_id & !(0xF << 12))) {
+                // There is a match!
+                log::debug!("Found {} for unmatched {}", id, msg.hex_id);
+                let mut new_str_id = id.str_id.to_owned().unwrap();
+                new_str_id.push_str(format!("-DEV{}", (msg.hex_id >> 12) & 0xF).as_str());
+
+                let new_can_id = CanId {
+                    hex_id: msg.hex_id,
+                    str_id: Some(new_str_id),
+                    scale: id.scale,
+                    description: id.description.clone(),
+                    unit: id.unit.clone(),
+                };
+
+                log::debug!("\tCreated new CAN ID: {}", new_can_id);
+
+                can_ids.insert(
+                    msg.hex_id,
+                    new_can_id
+                );
+            } else {
+                // The information is missing completely
                 let _ = not_mappable_ids.insert(msg.hex_id);
             }
-        };
+        }
     }
 
     for nm in not_mappable_ids {
@@ -153,25 +174,29 @@ fn create_collection(
     can_msgs: &Vec<CanMsg>,
     can_ids: &HashMap<u32, CanId>,
 ) -> Vec<CanMsgCollection> {
-    let mut split_by_id: Vec<CanMsgCollection> = vec![];
+    let mut collection: Vec<CanMsgCollection> = vec![];
     let mut last_id: u32 = 0;
     for msg in can_msgs.iter() {
         if msg.hex_id > last_id {
+            // This is a new CAN ID. We thus have to create a new collection first.
             last_id = msg.hex_id;
+
+            // Construct the CAN ID to be inserted into the collection.
             let can_id = match can_ids.get(&msg.hex_id) {
                 None => CanId::empty_with_id(msg.hex_id),
                 Some(id) => id.to_owned(),
             };
-            split_by_id.push(CanMsgCollection::new(can_id, *msg));
+            log::trace!("{}", can_id);
+            collection.push(CanMsgCollection::new(can_id, *msg));
         } else {
-            split_by_id
+            collection
                 .last_mut()
                 .unwrap()
                 .collection
                 .push(msg.to_owned());
         }
     }
-    split_by_id
+    collection
 }
 
 fn main() {
@@ -187,7 +212,7 @@ fn main() {
         "Collecting CAN IDs from {:#?}",
         cli_input.can_ids_path.as_os_str()
     );
-    let can_ids = acquire_can_ids(&cli_input.can_ids_path);
+    let mut can_ids = acquire_can_ids(&cli_input.can_ids_path);
 
     let mut total_size_b = 0;
     let mut can_msgs: Vec<CanMsg> = Vec::new();
@@ -208,7 +233,7 @@ fn main() {
         can_cmts.append(&mut parse_comments(&comments_path));
     }
 
-    check_can_ids(&can_msgs, &can_ids);
+    check_can_ids(&can_msgs, &mut can_ids);
     can_msgs.sort();
 
     log::info!("Writing to {:#?}...", cli_input.output_path.as_os_str());

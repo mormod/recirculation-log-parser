@@ -163,7 +163,7 @@ pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Ve
                 line_buf.clear();
 
                 if lnr % 500000 == 0 {
-                    log::debug!("Still at it...")
+                    log::trace!("Still at it...")
                 }
                 lnr += 1
             }
