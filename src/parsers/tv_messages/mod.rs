@@ -121,7 +121,7 @@ fn parse_simple<'a, E: ParseError<Span<'a>>>(
         let hex_id_res = u32::from_str_radix(from_utf8(hex_id_raw.as_ref()).unwrap().trim(), 16);
 
         let hex_id = hex_id_res.unwrap();
-        let (_, value) = float(list[1])?;
+        let value: f32 = bytes_to_string(list[1]).trim().replace(',', ".").parse().unwrap();
         let (_, ts) = parse_ts(list[list.len() - 1])?;
 
         can_msg = Some(CanMsg { hex_id, value, ts });
