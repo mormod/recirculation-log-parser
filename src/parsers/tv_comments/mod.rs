@@ -13,7 +13,7 @@ use nom::IResult;
 use nom_supreme::error::ErrorTree;
 use nom_supreme::final_parser::final_parser;
 
-use super::common::{bytes_to_string, handle_error, to_timestamp, Span};
+use super::common::{bytes_to_string, handle_error, Span};
 
 pub mod tv_comment;
 pub use tv_comment::CanCmt;
@@ -63,6 +63,19 @@ fn parse_comment<'a>(
         multispace1,
         parse_content,
     ))(input)
+}
+
+fn to_timestamp(hour: u32, min: u32, second: u32, millis: u32) -> u32 {
+    static mut HIGHEST_HOUR: u32 = 0;
+    let modifier = unsafe {
+        if hour < HIGHEST_HOUR {
+            24
+        } else {
+            HIGHEST_HOUR = hour;
+            0
+        }
+    };
+    return millis + 1000 * second + 1000 * 60 * min + 1000 * 60 * 24 * (hour + modifier);
 }
 
 #[allow(dead_code)] // 012	10-23-2014 09:21:58	New Offset on ID CAN_ID_PRESSURE_SIG2(0x10030001): 85,09 mmHg

@@ -2,7 +2,7 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
     character::{
-        complete::{digit1, space1},
+        complete::{space1},
         is_hex_digit, is_space,
     },
     error::ParseError,
@@ -19,7 +19,7 @@ use std::{
     path::Path,
 };
 
-use super::common::{bytes_to_string, handle_error, to_timestamp, Span};
+use super::common::{bytes_to_string, handle_error, Span};
 
 pub mod can_msg;
 pub use can_msg::CanMsg;
@@ -27,23 +27,37 @@ pub use can_msg::CanMsg;
 pub type FnCanMsgParser<'a> =
     fn(Span<'a>) -> IResult<Span<'a>, Option<CanMsg>, ErrorTree<Span<'a>>>;
 
+fn to_timestamp(hour: u32, min: u32, second: u32, millis: u32) -> u32 {
+    static mut HIGHEST_HOUR: u32 = 0;
+    let modifier = unsafe {
+        if hour < HIGHEST_HOUR {
+            24
+        } else {
+            HIGHEST_HOUR = hour;
+            0
+        }
+    };
+    return millis + 1000 * second + 1000 * 60 * min + 1000 * 60 * 60 * (hour + modifier);
+}
+
 fn parse_spaces<'a>(line: Span<'a>) -> IResult<Span<'a>, Span<'a>, ErrorTree<Span<'a>>> {
     space1(line)
 }
 
-fn parse_ts<'a, E: ParseError<Span<'a>>>(raw_ts: Span<'a>) -> IResult<Span<'a>, u32, E> {
-    let (r, list) = separated_list1(alt((tag(":"), tag("."))), digit1)(raw_ts)?;
-    let hour: u32 = bytes_to_string(list[0]).parse().unwrap();
-    let min: u32 = bytes_to_string(list[1]).parse().unwrap();
-    let sec: u32 = bytes_to_string(list[2]).parse().unwrap();
+fn parse_ts<'a>(raw_ts: Span<'a>) -> u32 {
+    let binding = bytes_to_string(raw_ts).trim().replace('.', ":");
+    let mut string_ts = binding.split(':');
+    let hour: u32 = string_ts.next().unwrap().parse().unwrap();
+    let min: u32 = string_ts.next().unwrap().parse().unwrap();
+    let sec: u32 = string_ts.next().unwrap().parse().unwrap();
 
-    let millis = if list.len() > 3 {
-        bytes_to_string(list[3]).parse::<u32>().unwrap()
+    let millis: u32 = if let Some(millis) = string_ts.next() {
+        millis.parse().unwrap()
     } else {
         0
     };
 
-    Ok((r, to_timestamp(hour, min, sec, millis)))
+    to_timestamp(hour, min, sec, millis)
 }
 
 //100C0000h	8	2E 00 00 00 01 00 00 00 	0,44921875 L/min	1	 average Blood Flow 		08:44:04.97
@@ -83,7 +97,7 @@ fn parse_extended<'a, E: ParseError<Span<'a>>>(
         let hex_id = hex_id_res.unwrap();
         let (_, value) = float(list[10])?;
 
-        let (_, ts) = parse_ts(list[list.len() - 1])?;
+        let ts = parse_ts(list[list.len() - 1]);
 
         can_msg = Some(CanMsg { hex_id, value, ts });
     }
@@ -122,7 +136,7 @@ fn parse_simple<'a, E: ParseError<Span<'a>>>(
 
         let hex_id = hex_id_res.unwrap();
         let value: f32 = bytes_to_string(list[1]).trim().replace(',', ".").parse().unwrap();
-        let (_, ts) = parse_ts(list[list.len() - 1])?;
+        let ts = parse_ts(list[list.len() - 1]);
 
         can_msg = Some(CanMsg { hex_id, value, ts });
     }
