@@ -55,19 +55,44 @@ struct CanHdfCli {
     comments_path: Option<PathBuf>,
 }
 
+struct CanMeta<'a> {
+    cli: &'a CanHdfCli,
+    time_ms: u128,
+    old_size_b: u64,
+    least_trailing_zeros: u32,
+}
+
 fn create_str_attr(location: &Location, name: &str, value: &str) -> hdf5::Result<()> {
     let attr = location.new_attr::<VarLenUnicode>().create(name)?;
     let value_: VarLenUnicode = value.parse().unwrap();
     attr.write_scalar(&value_)
 }
 
-fn write_to_hdf5<P: AsRef<Path>>(
+fn write_to_hdf5<'a, P: AsRef<Path>>(
     output_path: &P,
     collections: &Vec<CanMsgCollection>,
     can_cmts: &Vec<CanCmt>,
+    meta: &'a CanMeta,
 ) -> hdf5::Result<()> {
     let root = hdf5::File::create(output_path)?;
     create_str_attr(&root, "created", chrono::Local::now().to_rfc3339().as_str())?;
+    create_str_attr(
+        &root,
+        "CAN IDs file",
+        meta.cli.can_ids_path.as_os_str().to_str().unwrap(),
+    )?;
+    root.new_attr::<usize>()
+        .create("Processing time")?
+        .write_scalar(&(meta.time_ms as usize))?;
+    root.new_attr::<usize>()
+        .create("Dataset count")?
+        .write_scalar(&collections.len())?;
+    root.new_attr::<u64>()
+        .create("Previous size [B]")?
+        .write_scalar(&meta.old_size_b)?;
+    root.new_attr::<u32>()
+        .create("TS least trailing zeros")?
+        .write_scalar(&meta.least_trailing_zeros)?;
 
     let ds_group = root.create_group("CAN_IDs")?;
 
@@ -112,10 +137,28 @@ fn write_to_hdf5<P: AsRef<Path>>(
         log::debug!("Written dataset {}", str_id);
     }
 
-    root.new_dataset_builder()
-        .with_data(&can_cmts)
-        .set_filters(&[hdf5::filters::Filter::Deflate(5)])
-        .create("COMMENTS")?;
+    if !can_cmts.is_empty() {
+        root.new_dataset_builder()
+            .with_data(&can_cmts)
+            .set_filters(&[hdf5::filters::Filter::Deflate(5)])
+            .create("COMMENTS")?;
+
+        create_str_attr(
+            &root,
+            "Comments file path",
+            meta.cli
+                .comments_path
+                .as_ref()
+                .unwrap()
+                .as_os_str()
+                .to_str()
+                .unwrap(),
+        )?;
+
+        for logfile in &meta.cli.can_log_paths {
+            create_str_attr(&root, "Log file ", logfile.as_os_str().to_str().unwrap())?;
+        }
+    }
 
     log::debug!("Wrote comments to COMMENTS");
 
@@ -220,8 +263,16 @@ fn main() {
         total_size_b += std::fs::metadata(&log_path).unwrap().len();
     }
 
+    let mut trailing_zeros = 9;
+    for can_msg in &can_msgs {
+        let msg_trailing = can_msg.ts.trailing_zeros();
+        if msg_trailing < trailing_zeros {
+            trailing_zeros = msg_trailing;
+        }
+    }
+
     let mut can_cmts: Vec<CanCmt> = Vec::new();
-    if let Some(comments_path) = cli_input.comments_path {
+    if let Some(comments_path) = &cli_input.comments_path {
         log::info!("Parsing comments from {:#?}...", comments_path.as_os_str());
         can_cmts.append(&mut parse_comments(&comments_path));
     }
@@ -229,12 +280,21 @@ fn main() {
     check_can_ids(&can_msgs, &mut can_ids);
     can_msgs.sort();
 
+    let end = SystemTime::now();
+    let duration = end.duration_since(start).unwrap().as_millis();
+    log::info!("Took {} ms", duration);
+
+    let meta = CanMeta {
+        cli: &cli_input,
+        time_ms: duration,
+        old_size_b: total_size_b,
+        least_trailing_zeros: trailing_zeros,
+    };
+
     log::info!("Writing to {:#?}...", cli_input.output_path.as_os_str());
     let collection = create_collection(&can_msgs, &can_ids);
-    let _ = write_to_hdf5(&cli_input.output_path, &collection, &can_cmts);
+    let _ = write_to_hdf5(&cli_input.output_path, &collection, &can_cmts, &meta);
 
-    let end = SystemTime::now();
-    log::info!("Took {} ms", end.duration_since(start).unwrap().as_millis());
     log::debug!("Identified {} CAN IDs.", can_ids.len());
 
     if collection.len() == 0 {
