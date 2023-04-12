@@ -2,9 +2,10 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
     character::{
-        complete::{space1},
+        complete::{digit1, space1},
         is_hex_digit, is_space,
     },
+    combinator::opt,
     error::ParseError,
     multi::separated_list1,
     number::complete::float,
@@ -12,12 +13,14 @@ use nom::{
     IResult,
 };
 use nom_supreme::{error::ErrorTree, final_parser::final_parser};
-use std::str::from_utf8;
+use std::{str::from_utf8};
 use std::{
     fs::File,
     io::{BufRead, BufReader},
     path::Path,
 };
+
+use super::common::bytes_to_number;
 
 use super::common::{bytes_to_string, handle_error, Span};
 
@@ -27,37 +30,90 @@ pub use can_msg::CanMsg;
 pub type FnCanMsgParser<'a> =
     fn(Span<'a>) -> IResult<Span<'a>, Option<CanMsg>, ErrorTree<Span<'a>>>;
 
-fn to_timestamp(hour: u32, min: u32, second: u32, millis: u32) -> u32 {
-    static mut HIGHEST_HOUR: u32 = 0;
-    let modifier = unsafe {
-        if hour < HIGHEST_HOUR {
-            24
-        } else {
-            HIGHEST_HOUR = hour;
-            0
-        }
+fn to_timestamp(
+    hour: u64,
+    min: u64,
+    second: u64,
+    subsec: u64,
+    digits: u32,
+    did_surpass_midnight: bool,
+) -> u64 {
+    // Measure all in nanoseconds
+    static SUBSEC_UNIT: u64 = 1_000_000_000;
+    // Hour modifier, if we surpassed midnight.
+    let modifier: u64 = if did_surpass_midnight { 24 } else { 0 };
+    // Mostly, subsecond units are not given with the righ amount of
+    // digits and are therefore parsed wrong. Correct for that here.
+    let millis_scalar: u64 = SUBSEC_UNIT / 10_u64.pow(digits);
+
+    return (millis_scalar * subsec)
+        + (SUBSEC_UNIT * second)
+        + (SUBSEC_UNIT * 60_u64 * min)
+        + (SUBSEC_UNIT * 60_u64 * 60_u64 * (hour + modifier));
+}
+
+fn parse_ts<'a, E: ParseError<Span<'a>>>(raw_ts: Span<'a>) -> IResult<Span<'a>, u64, E> {
+    static mut LAST_HOUR: u64 = 12;
+    static mut DID_SURPASS_MIDNIGHT: bool = false;
+
+    // Timestamps are fucked.
+    // Due to the misfortunate format of timestamps throughout all log files, we have to do something
+    // less straight forward than parsing from "normal" time.
+    // Logs might surpass midnight, which may or may not be inidcated by a preceeding "1." before the
+    // current time. Sometimes, a leading "0." indicates that we did not surpass midnight yet.
+    // If midnight is surpassed, "0." may or may not change to "1.".
+    //
+    // [0.|1.]HH:MM:SS.[0-9]{1..4}
+    let (r, (day_indicator, hour_raw, _, min_raw, _, sec_raw, millis)) = tuple((
+        opt(tuple((digit1, tag(".")))),
+        digit1,
+        tag(":"),
+        digit1,
+        tag(":"),
+        digit1,
+        opt(tuple((tag("."), digit1))),
+    ))(raw_ts)?;
+
+    let (hour, _) = bytes_to_number(hour_raw);
+    let (min, _) = bytes_to_number(min_raw);
+    let (sec, _) = bytes_to_number(sec_raw);
+
+    let (subsec, digits): (u64, u32) = if let Some((_, subsec_raw)) = millis {
+        bytes_to_number(subsec_raw)
+    } else {
+        (0, 0)
     };
-    return millis + 1000 * second + 1000 * 60 * min + 1000 * 60 * 60 * (hour + modifier);
+
+    #[allow(unused_assignments)]
+    let mut ts = 0;
+    unsafe {
+        let midnight_indicator = match day_indicator {
+            // Parse "digit" from a byte to a string and check whether it is greater 0. 
+            // The digit is encoded in UTF-8, which enumerates digits starting with "30" for 0.
+            Some((digit, _)) => {
+                let (digit, _) = bytes_to_number(digit);
+                digit > 0
+            },
+            None => false,
+        };
+        let hour_diff = (LAST_HOUR - hour) == 23;
+        DID_SURPASS_MIDNIGHT = midnight_indicator || hour_diff;
+        if DID_SURPASS_MIDNIGHT {
+            log::debug!("Timestamps wrapped over at midnight!");    
+            log::trace!("{}", bytes_to_string(raw_ts));
+            log::trace!("\tParsed to: {}.{hour}:{min}:{sec}.{subsec} > {ts}", bytes_to_string(day_indicator.unwrap_or((Span::new("0".as_bytes()), Span::new(".".as_bytes()))).0));
+            log::trace!("\tLAST_HOUR: {LAST_HOUR}, hour_diff: {hour_diff} => {DID_SURPASS_MIDNIGHT}");      
+        }
+        LAST_HOUR = hour;
+        ts = to_timestamp(hour, min, sec, subsec, digits, DID_SURPASS_MIDNIGHT);
+    }
+
+
+    Ok((r, ts))
 }
 
 fn parse_spaces<'a>(line: Span<'a>) -> IResult<Span<'a>, Span<'a>, ErrorTree<Span<'a>>> {
     space1(line)
-}
-
-fn parse_ts<'a>(raw_ts: Span<'a>) -> u32 {
-    let binding = bytes_to_string(raw_ts).trim().replace('.', ":");
-    let mut string_ts = binding.split(':');
-    let hour: u32 = string_ts.next().unwrap().parse().unwrap();
-    let min: u32 = string_ts.next().unwrap().parse().unwrap();
-    let sec: u32 = string_ts.next().unwrap().parse().unwrap();
-
-    let millis: u32 = if let Some(millis) = string_ts.next() {
-        millis.parse().unwrap()
-    } else {
-        0
-    };
-
-    to_timestamp(hour, min, sec, millis)
 }
 
 //100C0000h	8	2E 00 00 00 01 00 00 00 	0,44921875 L/min	1	 average Blood Flow 		08:44:04.97
@@ -97,7 +153,7 @@ fn parse_extended<'a, E: ParseError<Span<'a>>>(
         let hex_id = hex_id_res.unwrap();
         let (_, value) = float(list[10])?;
 
-        let ts = parse_ts(list[list.len() - 1]);
+        let (_, ts) = parse_ts(list[list.len() - 1])?;
 
         can_msg = Some(CanMsg { hex_id, value, ts });
     }
@@ -135,8 +191,12 @@ fn parse_simple<'a, E: ParseError<Span<'a>>>(
         let hex_id_res = u32::from_str_radix(from_utf8(hex_id_raw.as_ref()).unwrap().trim(), 16);
 
         let hex_id = hex_id_res.unwrap();
-        let value: f32 = bytes_to_string(list[1]).trim().replace(',', ".").parse().unwrap();
-        let ts = parse_ts(list[list.len() - 1]);
+        let value: f32 = bytes_to_string(list[1])
+            .trim()
+            .replace(',', ".")
+            .parse()
+            .unwrap();
+        let (_, ts) = parse_ts(list[list.len() - 1])?;
 
         can_msg = Some(CanMsg { hex_id, value, ts });
     }
@@ -176,7 +236,7 @@ pub fn parse_messages<'a, P: AsRef<Path>>(log_file: &P, is_extended: bool) -> Ve
                 }
                 line_buf.clear();
 
-                if lnr % 500000 == 0 {
+                if lnr % 5000000 == 0 {
                     log::trace!("Still at it...")
                 }
                 lnr += 1

@@ -109,7 +109,6 @@ fn write_to_hdf5<P: AsRef<Path>>(
             .create("scale")?
             .write_scalar(scale)?;
 
-        log::trace!("HDF5 Filters: {:?}", dataset.filters());
         log::debug!("Written dataset {}", str_id);
     }
 
@@ -154,10 +153,7 @@ fn check_can_ids(can_msgs: &Vec<CanMsg>, can_ids: &mut HashMap<u32, CanId>) {
 
                 log::debug!("\tCreated new CAN ID: {}", new_can_id);
 
-                can_ids.insert(
-                    msg.hex_id,
-                    new_can_id
-                );
+                can_ids.insert(msg.hex_id, new_can_id);
             } else {
                 // The information is missing completely
                 let _ = not_mappable_ids.insert(msg.hex_id);
@@ -174,7 +170,7 @@ fn create_collection(
     can_msgs: &Vec<CanMsg>,
     can_ids: &HashMap<u32, CanId>,
 ) -> Vec<CanMsgCollection> {
-    let mut collection: Vec<CanMsgCollection> = vec![];
+    let mut collection: Vec<CanMsgCollection> = Vec::new();
     let mut last_id: u32 = 0;
     for msg in can_msgs.iter() {
         if msg.hex_id > last_id {
@@ -189,13 +185,10 @@ fn create_collection(
             log::trace!("{}", can_id);
             collection.push(CanMsgCollection::new(can_id, *msg));
         } else {
-            collection
-                .last_mut()
-                .unwrap()
-                .collection
-                .push(msg.to_owned());
+            collection.last_mut().unwrap().collection.push(*msg);
         }
     }
+
     collection
 }
 

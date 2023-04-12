@@ -5,8 +5,8 @@ use std::fmt;
 #[repr(C)]
 pub struct CanMsg {
     pub hex_id: u32,
+    pub ts: u64,
     pub value: f32,
-    pub ts: u32,
 }
 
 impl Eq for CanMsg {}

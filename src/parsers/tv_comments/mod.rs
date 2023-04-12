@@ -13,7 +13,7 @@ use nom::IResult;
 use nom_supreme::error::ErrorTree;
 use nom_supreme::final_parser::final_parser;
 
-use super::common::{bytes_to_string, handle_error, Span};
+use super::common::{bytes_to_string, bytes_to_number, handle_error, Span};
 
 pub mod tv_comment;
 pub use tv_comment::CanCmt;
@@ -26,11 +26,11 @@ fn parse_id<'a, E: ParseError<Span<'a>>>(input: Span<'a>) -> IResult<Span<'a>, u
 
 fn parse_time<'a, E: ParseError<Span<'a>>>(
     input: Span<'a>,
-) -> IResult<Span<'a>, (u32, u32, u32), E> {
+) -> IResult<Span<'a>, (u64, u64, u64), E> {
     let (r, list) = separated_list1(tag(":"), digit1)(input)?;
-    let hour: u32 = bytes_to_string(list[0]).parse().unwrap();
-    let min: u32 = bytes_to_string(list[1]).parse().unwrap();
-    let sec: u32 = bytes_to_string(list[2]).parse().unwrap();
+    let (hour, _) = bytes_to_number(list[0]);
+    let (min, _) = bytes_to_number(list[1]);
+    let (sec, _) = bytes_to_number(list[2]);
     Ok((r, (hour, min, sec)))
 }
 
@@ -49,7 +49,7 @@ fn parse_comment<'a>(
         Span<'a>,
         Vec<Span<'a>>,
         Span<'a>,
-        (u32, u32, u32),
+        (u64, u64, u64),
         Span<'a>,
         String,
     ),
@@ -65,26 +65,48 @@ fn parse_comment<'a>(
     ))(input)
 }
 
-fn to_timestamp(hour: u32, min: u32, second: u32, millis: u32) -> u32 {
-    static mut HIGHEST_HOUR: u32 = 0;
-    let modifier = unsafe {
-        if hour < HIGHEST_HOUR {
-            24
-        } else {
-            HIGHEST_HOUR = hour;
-            0
-        }
-    };
-    return millis + 1000 * second + 1000 * 60 * min + 1000 * 60 * 24 * (hour + modifier);
+fn to_timestamp(
+    hour: u64,
+    min: u64,
+    second: u64,
+    subsec: u64,
+    digits: u32,
+    did_surpass_midnight: bool,
+) -> u64 {
+    // Measure all in nanoseconds
+    static SUBSEC_UNIT: u64 = 1_000_000_000;
+    // Hour modifier, if we surpassed midnight.
+    let modifier: u64 = if did_surpass_midnight { 24 } else { 0 };
+    // Mostly, subsecond units are not given with the righ amount of
+    // digits and are therefore parsed wrong. Correct for that here.
+    let millis_scalar: u64 = SUBSEC_UNIT / 10_u64.pow(digits);
+
+    return (millis_scalar * subsec)
+        + (SUBSEC_UNIT * second)
+        + (SUBSEC_UNIT * 60_u64 * min)
+        + (SUBSEC_UNIT * 60_u64 * 60_u64 * (hour + modifier));
 }
 
-#[allow(dead_code)] // 012	10-23-2014 09:21:58	New Offset on ID CAN_ID_PRESSURE_SIG2(0x10030001): 85,09 mmHg
+// 012	10-23-2014 09:21:58	New Offset on ID CAN_ID_PRESSURE_SIG2(0x10030001): 85,09 mmHg
 fn parse_line<'a>(input: Span<'a>) -> IResult<Span<'a>, Option<CanCmt>, ErrorTree<Span<'a>>> {
+    static mut LAST_HOUR: u64 = 12;
+    static mut DID_SURPASS_MIDNIGHT: bool = false;
     let mut tvcomment = None;
     let parse_res = parse_comment(input);
     if parse_res.is_ok() {
         let (_, (id, _, _, _, (hour, min, sec), _, content)) = parse_res.unwrap();
-        let ts = to_timestamp(hour, min, sec, 0);
+        #[allow(unused_assignments)]
+        let mut ts = 0;
+        unsafe {
+            DID_SURPASS_MIDNIGHT = (LAST_HOUR - hour) == 23;
+            if DID_SURPASS_MIDNIGHT {
+                log::debug!("Timestamps wrapped over at midnight!");    
+                log::trace!("\tParsed to: {hour}:{min}:{sec}.0 > {ts}");
+                log::trace!("\tLAST_HOUR: {LAST_HOUR} hour: {hour} => {DID_SURPASS_MIDNIGHT}");      
+            }
+            LAST_HOUR = hour;
+            ts = to_timestamp(hour, min, sec, 0, 0, DID_SURPASS_MIDNIGHT);
+        }
         tvcomment = Some(CanCmt {
             id,
             ts,
