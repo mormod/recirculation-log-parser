@@ -13,7 +13,7 @@ use nom::IResult;
 use nom_supreme::error::ErrorTree;
 use nom_supreme::final_parser::final_parser;
 
-use super::common::{bytes_to_string, bytes_to_number, handle_error, Span};
+use super::common::{bytes_to_number, bytes_to_string, handle_error, Span};
 
 pub mod tv_comment;
 pub use tv_comment::CanCmt;
@@ -95,14 +95,15 @@ fn parse_line<'a>(input: Span<'a>) -> IResult<Span<'a>, Option<CanCmt>, ErrorTre
     let parse_res = parse_comment(input);
     if parse_res.is_ok() {
         let (_, (id, _, _, _, (hour, min, sec), _, content)) = parse_res.unwrap();
+
         #[allow(unused_assignments)]
         let mut ts = 0;
         unsafe {
             DID_SURPASS_MIDNIGHT = (LAST_HOUR - hour) == 23;
             if DID_SURPASS_MIDNIGHT {
-                log::debug!("Timestamps wrapped over at midnight!");    
+                log::debug!("Timestamps wrapped over at midnight!");
                 log::trace!("\tParsed to: {hour}:{min}:{sec}.0 > {ts}");
-                log::trace!("\tLAST_HOUR: {LAST_HOUR} hour: {hour} => {DID_SURPASS_MIDNIGHT}");      
+                log::trace!("\tLAST_HOUR: {LAST_HOUR} hour: {hour} => {DID_SURPASS_MIDNIGHT}");
             }
             LAST_HOUR = hour;
             ts = to_timestamp(hour, min, sec, 0, 0, DID_SURPASS_MIDNIGHT);

@@ -13,7 +13,7 @@ use nom::{
     IResult,
 };
 use nom_supreme::{error::ErrorTree, final_parser::final_parser};
-use std::{str::from_utf8};
+use std::str::from_utf8;
 use std::{
     fs::File,
     io::{BufRead, BufReader},
@@ -88,26 +88,34 @@ fn parse_ts<'a, E: ParseError<Span<'a>>>(raw_ts: Span<'a>) -> IResult<Span<'a>, 
     let mut ts = 0;
     unsafe {
         let midnight_indicator = match day_indicator {
-            // Parse "digit" from a byte to a string and check whether it is greater 0. 
+            // Parse "digit" from a byte to a string and check whether it is greater 0.
             // The digit is encoded in UTF-8, which enumerates digits starting with "30" for 0.
             Some((digit, _)) => {
                 let (digit, _) = bytes_to_number(digit);
                 digit > 0
-            },
+            }
             None => false,
         };
         let hour_diff = (LAST_HOUR - hour) == 23;
         DID_SURPASS_MIDNIGHT = midnight_indicator || hour_diff;
         if DID_SURPASS_MIDNIGHT {
-            log::debug!("Timestamps wrapped over at midnight!");    
+            log::debug!("Timestamps wrapped over at midnight!");
             log::trace!("{}", bytes_to_string(raw_ts));
-            log::trace!("\tParsed to: {}.{hour}:{min}:{sec}.{subsec} > {ts}", bytes_to_string(day_indicator.unwrap_or((Span::new("0".as_bytes()), Span::new(".".as_bytes()))).0));
-            log::trace!("\tLAST_HOUR: {LAST_HOUR}, hour_diff: {hour_diff} => {DID_SURPASS_MIDNIGHT}");      
+            log::trace!(
+                "\tParsed to: {}.{hour}:{min}:{sec}.{subsec} > {ts}",
+                bytes_to_string(
+                    day_indicator
+                        .unwrap_or((Span::new("0".as_bytes()), Span::new(".".as_bytes())))
+                        .0
+                )
+            );
+            log::trace!(
+                "\tLAST_HOUR: {LAST_HOUR}, hour_diff: {hour_diff} => {DID_SURPASS_MIDNIGHT}"
+            );
         }
         LAST_HOUR = hour;
         ts = to_timestamp(hour, min, sec, subsec, digits, DID_SURPASS_MIDNIGHT);
     }
-
 
     Ok((r, ts))
 }
